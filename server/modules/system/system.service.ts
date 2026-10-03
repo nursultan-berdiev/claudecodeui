@@ -29,6 +29,12 @@ export function createSystemUpdateService(dependencies: SystemUpdateDependencies
   return {
     /** Selects and executes the correct update workflow for this installation. */
     async updateSystem() {
+      if (dependencies.environment.CLOUDCLI_CONTAINER_DEPLOYMENT === 'true') {
+        return {
+          success: false as const,
+          error: 'Update the Docker image from this fork with docker compose build and up.',
+        };
+      }
       const updateCommand = dependencies.isPlatform
         ? 'npm run update:platform'
         : dependencies.installMode === 'git'

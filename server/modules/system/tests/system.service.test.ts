@@ -66,6 +66,18 @@ test('global npm installations update from the user home directory', async () =>
   assert.equal(result.output, 'Update completed successfully');
 });
 
+test('container deployments do not replace the fork with the upstream npm package', async () => {
+  const service = createSystemUpdateService(createDependencies({
+    installMode: 'npm',
+    environment: { CLOUDCLI_CONTAINER_DEPLOYMENT: 'true' },
+    runShellCommand: async () => { throw new Error('update command must not run'); },
+  }));
+  assert.deepEqual(await service.updateSystem(), {
+    success: false,
+    error: 'Update the Docker image from this fork with docker compose build and up.',
+  });
+});
+
 test('platform installations use the platform workflow regardless of install mode', async () => {
   const calls: unknown[][] = [];
   const dependencies = createDependencies({

@@ -172,6 +172,14 @@ export const api = {
     }),
     refresh: () => post('/api/auth/refresh'),
     user: () => get('/api/auth/user'),
+    listUsers: () => get('/api/auth/users'),
+    listAudit: () => get('/api/auth/audit'),
+    createUser: (username: string, password: string, role: 'admin' | 'member') =>
+      post('/api/auth/users', { username, password, role }),
+    updateUser: (id: number, changes: { role?: 'admin' | 'member'; isActive?: boolean }) =>
+      patch(`/api/auth/users/${id}`, changes),
+    resetUserPassword: (id: number, password: string) =>
+      post(`/api/auth/users/${id}/password`, { password }),
   },
 
   // Protected endpoints

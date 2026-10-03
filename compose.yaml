@@ -1,0 +1,32 @@
+services:
+  cloudcli:
+    build:
+      context: .
+      args:
+        CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:-2.1.288}
+    image: keydev-cloudcli:local
+    init: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      SERVER_PORT: "3001"
+      DATABASE_PATH: /home/node/.cloudcli/auth.db
+      CLOUDCLI_CONTAINER_DEPLOYMENT: "true"
+    ports:
+      - "${CLOUDCLI_BIND_ADDRESS:-127.0.0.1}:${CLOUDCLI_PORT:-3001}:3001"
+    volumes:
+      - cloudcli_home:/home/node
+      - cloudcli_workspaces:/workspace
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  cloudcli_home:
+  cloudcli_workspaces:

@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { ProviderLoginModal } from '@/modules/provider-auth';
+import { useAuth, UsersAdminPanel } from '@/modules/auth';
 import { Button } from '@/shared/ui';
 import SettingsSidebar from '@/modules/settings/SettingsSidebar';
 import AgentsSettingsTab from '@/modules/settings/tabs/agents-settings/AgentsSettingsTab';
@@ -37,6 +38,8 @@ type DesktopNotificationsState = {
 /** Exported as the settings module's public entry point and rendered by the sidebar module as its settings dialog. */
 function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: SettingsProps) {
   const { t } = useTranslation('settings');
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const desktopNotificationsBridge = useMemo(() => (
     typeof window === 'undefined'
       ? null
@@ -69,6 +72,7 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
     isOpen,
     initialTab
   });
+  const visibleTab = !isAdmin && (activeTab === 'users' || activeTab === 'plugins') ? 'agents' : activeTab;
 
   const {
     permission: pushPermission,
@@ -215,12 +219,12 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
 
         {/* Body: sidebar + content */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-row">
-          <SettingsSidebar activeTab={activeTab} onChange={setActiveTab} />
+          <SettingsSidebar activeTab={visibleTab} onChange={setActiveTab} />
 
           {/* Content */}
           <main className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
-            <div key={activeTab} className="settings-content-enter min-w-0 space-y-6 overflow-x-hidden p-4 pb-safe-area-inset-bottom md:space-y-8 md:p-6">
-              {activeTab === 'appearance' && (
+            <div key={visibleTab} className="settings-content-enter min-w-0 space-y-6 overflow-x-hidden p-4 pb-safe-area-inset-bottom md:space-y-8 md:p-6">
+              {visibleTab === 'appearance' && (
                 <AppearanceSettingsTab
                   projectSortOrder={projectSortOrder}
                   onProjectSortOrderChange={setProjectSortOrder}
@@ -232,10 +236,11 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
                 />
               )}
 
-              {activeTab === 'git' && <GitSettingsTab />}
+              {visibleTab === 'git' && <GitSettingsTab />}
 
-              {activeTab === 'agents' && (
+              {visibleTab === 'agents' && (
                 <AgentsSettingsTab
+                  isAdmin={isAdmin}
                   providerAuthStatus={providerAuthStatus}
                   onProviderLogin={openLoginForProvider}
                   claudePermissions={claudePermissions}
@@ -248,11 +253,11 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
                 />
               )}
 
-              {activeTab === 'tasks' && <TasksSettingsTab />}
+              {visibleTab === 'tasks' && <TasksSettingsTab />}
 
-              {activeTab === 'browser' && <BrowserUseSettingsTab />}
+              {visibleTab === 'browser' && <BrowserUseSettingsTab />}
 
-              {activeTab === 'notifications' && (
+              {visibleTab === 'notifications' && (
                 <NotificationsSettingsTab
                   notificationPreferences={notificationPreferences}
                   onNotificationPreferencesChange={setNotificationPreferences}
@@ -268,26 +273,28 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
                 />
               )}
 
-              {activeTab === 'api' && <CredentialsSettingsTab />}
+              {visibleTab === 'api' && <CredentialsSettingsTab />}
 
-              {activeTab === 'voice' && <VoiceSettingsTab />}
+              {visibleTab === 'voice' && <VoiceSettingsTab />}
 
-              {activeTab === 'plugins' && <PluginSettingsTab />}
+              {visibleTab === 'plugins' && isAdmin && <PluginSettingsTab />}
 
-              {activeTab === 'about' && <AboutTab />}
+              {visibleTab === 'users' && isAdmin && <UsersAdminPanel />}
+
+              {visibleTab === 'about' && <AboutTab />}
             </div>
           </main>
         </div>
       </div>
 
-      <ProviderLoginModal
+      {isAdmin && <ProviderLoginModal
         key={loginProvider || 'claude'}
         isOpen={showLoginModal}
         onClose={() => setShowLoginModal(false)}
         provider={loginProvider || 'claude'}
         onComplete={handleLoginComplete}
         isAuthenticated={isAuthenticated}
-      />
+      />}
 
     </div>
   );

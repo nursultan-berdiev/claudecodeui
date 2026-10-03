@@ -2,8 +2,7 @@
  * User repository.
  *
  * Provides typed CRUD operations for the `users` table.
- * This is a single-user system, but the schema supports multiple
- * users for forward compatibility.
+ * Local account records and stable external identity fields are stored here.
  */
 
 import { getConnection } from '@/modules/database/connection.js';
@@ -12,6 +11,10 @@ type UserRow = {
   id: number;
   username: string;
   password_hash: string;
+  role: 'admin' | 'member';
+  identity_provider: string;
+  identity_subject: string | null;
+  auth_version: number;
   created_at: string;
   last_login: string | null;
   is_active: number;
@@ -20,7 +23,7 @@ type UserRow = {
   has_completed_onboarding: number;
 };
 
-type UserPublicRow = Pick<UserRow, 'id' | 'username' | 'created_at' | 'last_login'>;
+type UserPublicRow = Pick<UserRow, 'id' | 'username' | 'role' | 'identity_provider' | 'is_active' | 'auth_version' | 'created_at' | 'last_login'>;
 
 type UserGitConfig = {
   git_name: string | null;
@@ -30,6 +33,8 @@ type UserGitConfig = {
 type CreateUserResult = {
   id: number | bigint;
   username: string;
+  role: 'admin' | 'member';
+  auth_version: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -47,12 +52,12 @@ export const userDb = {
   },
 
   /** Inserts a new user and returns the created ID + username. */
-  createUser(username: string, passwordHash: string): CreateUserResult {
+  createUser(username: string, passwordHash: string, role: 'admin' | 'member' = 'member'): CreateUserResult {
     const db = getConnection();
     const result = db
-      .prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)')
-      .run(username, passwordHash);
-    return { id: result.lastInsertRowid, username };
+      .prepare('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)')
+      .run(username, passwordHash, role);
+    return { id: result.lastInsertRowid, username, role, auth_version: 0 };
   },
 
   /**
@@ -84,9 +89,46 @@ export const userDb = {
     const db = getConnection();
     return db
       .prepare(
-        'SELECT id, username, created_at, last_login FROM users WHERE id = ? AND is_active = 1'
+        'SELECT id, username, role, identity_provider, is_active, auth_version, created_at, last_login FROM users WHERE id = ? AND is_active = 1'
       )
       .get(userId) as UserPublicRow | undefined;
+  },
+
+  /** Lists accounts for administration without exposing password hashes. */
+  listUsers(): UserPublicRow[] {
+    return getConnection()
+      .prepare('SELECT id, username, role, identity_provider, is_active, auth_version, created_at, last_login FROM users ORDER BY id')
+      .all() as UserPublicRow[];
+  },
+
+  /** Reads an account including a disabled one for admin updates. */
+  getUserByIdIncludingInactive(userId: number): UserPublicRow | undefined {
+    return getConnection()
+      .prepare('SELECT id, username, role, identity_provider, is_active, auth_version, created_at, last_login FROM users WHERE id = ?')
+      .get(userId) as UserPublicRow | undefined;
+  },
+
+  /** Counts administrators who can still sign in. */
+  countActiveAdmins(): number {
+    const row = getConnection()
+      .prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND is_active = 1")
+      .get() as { count: number };
+    return row.count;
+  },
+
+  /** Changes a local account's role. */
+  setRole(userId: number, role: 'admin' | 'member'): void {
+    getConnection().prepare('UPDATE users SET role = ?, auth_version = auth_version + 1 WHERE id = ?').run(role, userId);
+  },
+
+  /** Enables or disables an account. */
+  setActive(userId: number, isActive: boolean): void {
+    getConnection().prepare('UPDATE users SET is_active = ?, auth_version = auth_version + 1 WHERE id = ?').run(isActive ? 1 : 0, userId);
+  },
+
+  /** Replaces a local password hash after an administrative reset. */
+  setPasswordHash(userId: number, passwordHash: string): void {
+    getConnection().prepare('UPDATE users SET password_hash = ?, auth_version = auth_version + 1 WHERE id = ?').run(passwordHash, userId);
   },
 
   /** Returns the first active user. Used for single-user mode lookups. */
@@ -94,7 +136,7 @@ export const userDb = {
     const db = getConnection();
     return db
       .prepare(
-        'SELECT id, username, created_at, last_login FROM users WHERE is_active = 1 LIMIT 1'
+        'SELECT id, username, role, identity_provider, is_active, auth_version, created_at, last_login FROM users WHERE is_active = 1 LIMIT 1'
       )
       .get() as UserPublicRow | undefined;
   },

@@ -5,6 +5,9 @@ import type { createAuthService } from './auth.service.js';
 
 type AuthenticatedRequest = express.Request & { user?: unknown };
 
+const requestBody = (body: unknown): Record<string, unknown> =>
+  body && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : {};
+
 /**
  * Creates the Auth transport adapter. Handlers only parse request data and
  * delegate authentication behavior to the injected application service.
@@ -25,7 +28,7 @@ export function createAuthRouter(
 
   router.post('/register', async (req, res, next) => {
     try {
-      const body = req.body as { username?: unknown; password?: unknown };
+      const body = requestBody(req.body);
       res.json(await service.register(body.username, body.password));
     } catch (error) {
       next(error);
@@ -34,7 +37,7 @@ export function createAuthRouter(
 
   router.post('/login', async (req, res, next) => {
     try {
-      const body = req.body as { username?: unknown; password?: unknown };
+      const body = requestBody(req.body);
       res.json(await service.login(body.username, body.password));
     } catch (error) {
       next(error);
@@ -51,6 +54,53 @@ export function createAuthRouter(
 
   router.post('/logout', authenticateToken, (_req, res) => {
     res.json(service.logout());
+  });
+
+  router.get('/users', authenticateToken, (req, res, next) => {
+    try {
+      res.json(service.listUsers((req as AuthenticatedRequest).user));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/audit', authenticateToken, (req, res, next) => {
+    try {
+      res.json(service.listAudit((req as AuthenticatedRequest).user));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/users', authenticateToken, async (req, res, next) => {
+    try {
+      const body = requestBody(req.body);
+      res.status(201).json(await service.createManagedUser(
+        (req as AuthenticatedRequest).user, body.username, body.password, body.role,
+      ));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.patch('/users/:id', authenticateToken, (req, res, next) => {
+    try {
+      const body = requestBody(req.body);
+      res.json(service.updateManagedUser((req as AuthenticatedRequest).user, req.params.id, body));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/users/:id/password', authenticateToken, async (req, res, next) => {
+    try {
+      const body = requestBody(req.body);
+      res.json(await service.resetManagedPassword(
+        (req as AuthenticatedRequest).user, req.params.id, body.password,
+      ));
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;

@@ -1,6 +1,7 @@
 import { Database } from 'better-sqlite3';
 
 import {
+  AUDIT_EVENTS_TABLE_SCHEMA_SQL,
   APP_CONFIG_TABLE_SCHEMA_SQL,
   LAST_SCANNED_AT_SQL,
   NOTIFICATION_CHANNEL_ENDPOINTS_TABLE_SCHEMA_SQL,
@@ -483,6 +484,22 @@ export const runMigrations = (db: Database) => {
 
     addColumnToTableIfNotExists(db, 'users', userColumnNames, 'git_name', 'TEXT');
     addColumnToTableIfNotExists(db, 'users', userColumnNames, 'git_email', 'TEXT');
+    addColumnToTableIfNotExists(db, 'users', userColumnNames, 'role', "TEXT NOT NULL DEFAULT 'member'");
+    addColumnToTableIfNotExists(db, 'users', userColumnNames, 'identity_provider', "TEXT NOT NULL DEFAULT 'local'");
+    addColumnToTableIfNotExists(db, 'users', userColumnNames, 'identity_subject', 'TEXT');
+    addColumnToTableIfNotExists(db, 'users', userColumnNames, 'auth_version', 'INTEGER NOT NULL DEFAULT 0');
+    db.exec(`
+      UPDATE users SET role = 'admin'
+      WHERE id = (SELECT MIN(id) FROM users)
+        AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')
+    `);
+    db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_external_identity
+      ON users(identity_provider, identity_subject)
+      WHERE identity_subject IS NOT NULL
+    `);
+    db.exec(AUDIT_EVENTS_TABLE_SCHEMA_SQL);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at DESC)');
     addColumnToTableIfNotExists(
       db,
       'users',

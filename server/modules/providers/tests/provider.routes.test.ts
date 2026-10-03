@@ -26,7 +26,15 @@ async function withProviderServer(
   await writeFile(process.env.DATABASE_PATH, '');
   await initializeDatabase();
 
-  const app = express().use(express.json()).use('/api/providers', providerRouter);
+  const app = express().use(express.json());
+  app.use((req, _res, next) => {
+    (req as Request & { user?: { id: number; role: string } }).user = {
+      id: 1,
+      role: req.headers['x-test-role'] === 'member' ? 'member' : 'admin',
+    };
+    next();
+  });
+  app.use('/api/providers', providerRouter);
   app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (error instanceof AppError) {
       res.status(error.statusCode).json({
@@ -243,6 +251,22 @@ test('model routes expose immutable defaults and full custom model CRUD', async 
       deletePayload.data.models.OPTIONS.some((option) => option.recordId === customRecordId),
       false,
     );
+  });
+});
+
+test('a member can read models but cannot change shared provider configuration', async () => {
+  await withProviderServer(async (baseUrl) => {
+    const read = await fetch(`${baseUrl}/api/providers/codex/models`, {
+      headers: { 'x-test-role': 'member' },
+    });
+    assert.equal(read.status, 200);
+
+    const write = await fetch(`${baseUrl}/api/providers/codex/models`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-test-role': 'member' },
+      body: JSON.stringify({ model: 'Private model', id: 'example/model' }),
+    });
+    assert.equal(write.status, 403);
   });
 });
 

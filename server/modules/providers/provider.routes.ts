@@ -1,5 +1,6 @@
 import express, { type Request, type Response } from 'express';
 
+import { requireAdmin } from '@/modules/auth/index.js';
 import { providerAuthService } from '@/modules/providers/services/provider-auth.service.js';
 import { providerCapabilitiesService } from '@/modules/providers/services/provider-capabilities.service.js';
 import { providerMcpService } from '@/modules/providers/services/mcp.service.js';
@@ -20,6 +21,17 @@ import type {
 import { AppError, asyncHandler, createApiSuccessResponse } from '@/shared/utils.js';
 
 const router = express.Router();
+
+router.use((req, res, next) => {
+  const parts = req.path.split('/').filter(Boolean);
+  const changesSharedProviderConfig = req.method !== 'GET'
+    && ((parts[0] === 'mcp' && parts[1] === 'servers')
+      || (parts.length > 1 && ['models', 'skills', 'mcp'].includes(parts[1])));
+  if (changesSharedProviderConfig) {
+    return requireAdmin(req, res, next);
+  }
+  next();
+});
 
 const readPathParam = (value: unknown, name: string): string => {
   if (typeof value === 'string') {

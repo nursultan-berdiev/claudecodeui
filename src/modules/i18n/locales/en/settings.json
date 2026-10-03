@@ -133,7 +133,28 @@
     "browser": "Browser",
     "notifications": "Notifications",
     "plugins": "Plugins",
+    "users": "Users",
     "about": "About"
+  },
+  "users": {
+    "title": "Users",
+    "description": "Local users share this server's projects, sessions, and coding agent accounts.",
+    "username": "Username",
+    "password": "Password",
+    "newPassword": "New password",
+    "role": "Role",
+    "member": "Member",
+    "admin": "Administrator",
+    "create": "Create user",
+    "disable": "Disable",
+    "enable": "Enable",
+    "resetPassword": "Reset password",
+    "savePassword": "Save password",
+    "cancel": "Cancel",
+    "created": "User created",
+    "updated": "User updated",
+    "passwordUpdated": "Password updated",
+    "auditTitle": "Recent activity"
   },
   "notifications": {
     "title": "Notifications",
