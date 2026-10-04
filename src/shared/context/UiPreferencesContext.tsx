@@ -5,7 +5,7 @@ import {
   readStoredUiPreferences,
   uiPreferencesReducer,
 } from '@/shared/uiPreferences';
-import type { UiPreferenceKey, UiPreferences } from '@/shared/uiPreferences';
+import type { UiPreferenceKey, UiPreferences } from '@/shared/types';
 import { subscribeToUserPreferences, writeUserPreference } from '@/shared/userSettings';
 
 type UiPreferenceActions = {

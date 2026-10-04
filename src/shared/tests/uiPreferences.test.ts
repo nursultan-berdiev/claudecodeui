@@ -6,7 +6,7 @@ import {
   readStoredUiPreferences,
   uiPreferencesReducer,
 } from '@/shared/uiPreferences';
-import type { UiPreferences } from '@/shared/uiPreferences';
+import type { UiPreferences } from '@/shared/types';
 import { writeUserPreference, resetUserPreferences } from '@/shared/userSettings';
 
 /**
@@ -37,6 +37,8 @@ test('a fresh install gets the documented defaults', () => {
     sendByCtrlEnter: false,
     sidebarVisible: true,
     voiceEnabled: false,
+    showTerminalTab: true,
+    showFilesTab: true,
   });
 });
 

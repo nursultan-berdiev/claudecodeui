@@ -53,6 +53,24 @@ export type ProviderModelActions = {
 /** Identifies the workspace pane the user is looking at; plugin panes are namespaced by plugin id. */
 export type AppTab = 'chat' | 'files' | 'shell' | 'git' | 'tasks' | 'browser' | `plugin:${string}`;
 
+//----------------- UI PREFERENCES ------------
+
+/** Personal display and input preferences persisted by the shared preference store. */
+export type UiPreferences = {
+  showRawParameters: boolean;
+  showThinking: boolean;
+  sendByCtrlEnter: boolean;
+  sidebarVisible: boolean;
+  voiceEnabled: boolean;
+  showTerminalTab: boolean;
+  showFilesTab: boolean;
+};
+
+/** A supported boolean setting accepted by the UI preference context. */
+export type UiPreferenceKey = keyof UiPreferences;
+
+// ---------------------------
+
 /** A message queued to be sent to a session at a future time. */
 export type ScheduledMessage = {
   id: string;

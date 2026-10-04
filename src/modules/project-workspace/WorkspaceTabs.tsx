@@ -1,4 +1,4 @@
-import { MessageSquare, Terminal, Folder, GitBranch, ClipboardCheck, MonitorPlay, type LucideIcon } from 'lucide-react';
+import { MessageSquare, Terminal, Folder, ClipboardCheck, MonitorPlay, type LucideIcon } from 'lucide-react';
 import { Fragment } from 'react';
 import type { Dispatch, KeyboardEvent, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -7,6 +7,8 @@ import { Tooltip, PillBar, Pill } from '@/shared/ui';
 import type { AppTab } from '@/shared/types';
 import { usePlugins,PluginIcon } from '@/modules/plugins';
 import { useAuth } from '@/modules/auth';
+import { useUiPreferences } from '@/shared/context/UiPreferencesContext';
+import { isWorkspaceTabVisible } from '@/shared/utils';
 
 type WorkspaceTabsProps = {
   activeTab: AppTab;
@@ -36,7 +38,6 @@ const BASE_TABS: BuiltInTab[] = [
   { kind: 'builtin', id: 'chat',  labelKey: 'tabs.chat',  icon: MessageSquare },
   { kind: 'builtin', id: 'shell', labelKey: 'tabs.shell', icon: Terminal },
   { kind: 'builtin', id: 'files', labelKey: 'tabs.files', icon: Folder },
-  { kind: 'builtin', id: 'git',   labelKey: 'tabs.git',   icon: GitBranch },
 ];
 
 const BROWSER_TAB: BuiltInTab = {
@@ -63,9 +64,10 @@ export default function WorkspaceTabs({
   const { t } = useTranslation();
   const { plugins } = usePlugins();
   const { user } = useAuth();
+  const preferences = useUiPreferences();
 
   const builtInTabs: BuiltInTab[] = [
-    ...BASE_TABS.filter((tab) => tab.id !== 'shell' || user?.role === 'admin'),
+    ...BASE_TABS.filter((tab) => isWorkspaceTabVisible(tab.id, preferences, user?.role === 'admin')),
     ...(shouldShowBrowserTab ? [BROWSER_TAB] : []),
     ...(shouldShowTasksTab ? [TASKS_TAB] : []),
   ];

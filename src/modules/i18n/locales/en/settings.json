@@ -236,6 +236,17 @@
     }
   },
   "appearanceSettings": {
+    "workspaceTabs": {
+      "title": "Workspace tabs",
+      "terminal": {
+        "label": "Show terminal",
+        "description": "Display the Terminal tab in the workspace"
+      },
+      "files": {
+        "label": "Show files",
+        "description": "Display the Files tab in the workspace"
+      }
+    },
     "darkMode": {
       "label": "Dark Mode",
       "description": "Toggle between light and dark themes"

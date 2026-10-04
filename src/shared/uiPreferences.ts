@@ -1,4 +1,5 @@
 import { readUserPreference } from '@/shared/userSettings';
+import type { UiPreferenceKey, UiPreferences } from '@/shared/types';
 
 /**
  * The boolean UI preferences and their reducer, kept separate from the provider
@@ -8,18 +9,7 @@ import { readUserPreference } from '@/shared/userSettings';
  * made on one device is in effect on the next.
  */
 
-/** Toggles the user controls from Quick Settings and the Settings dialog. */
-export type UiPreferences = {
-  showRawParameters: boolean;
-  showThinking: boolean;
-  sendByCtrlEnter: boolean;
-  sidebarVisible: boolean;
-  voiceEnabled: boolean;
-};
-
-export type UiPreferenceKey = keyof UiPreferences;
-
-export type UiPreferencesAction =
+type UiPreferencesAction =
   | { type: 'set'; key: UiPreferenceKey; value: unknown }
   | { type: 'set_many'; value?: Partial<Record<UiPreferenceKey, unknown>> };
 
@@ -29,6 +19,8 @@ const DEFAULTS: UiPreferences = {
   sendByCtrlEnter: false,
   sidebarVisible: true,
   voiceEnabled: false,
+  showTerminalTab: true,
+  showFilesTab: true,
 };
 
 const PREFERENCE_KEYS = Object.keys(DEFAULTS) as UiPreferenceKey[];

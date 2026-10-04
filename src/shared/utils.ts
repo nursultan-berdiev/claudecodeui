@@ -1,7 +1,19 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-import type { Project, ProjectSession, QuickSettingsTab, SlashCommand } from '@/shared/types';
+import type { AppTab, Project, ProjectSession, QuickSettingsTab, SlashCommand, UiPreferences } from '@/shared/types';
+
+//----------------- WORKSPACE NAVIGATION ------------
+
+/** Keeps workspace rendering and command navigation consistent with personal visibility settings. */
+export function isWorkspaceTabVisible(tab: AppTab, preferences: UiPreferences, isAdmin: boolean): boolean {
+  if (tab === 'git') return false;
+  if (tab === 'shell') return isAdmin && preferences.showTerminalTab;
+  if (tab === 'files') return preferences.showFilesTab;
+  return true;
+}
+
+// ---------------------------
 
 //----------------- DEPLOYMENT MODE ------------
 

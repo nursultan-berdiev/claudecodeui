@@ -5,6 +5,12 @@ import { test, vi } from 'vitest';
 
 import type { CodeEditorFile } from '@/shared/types';
 
+// Editor assertions must not depend on translation initialization in imported navigation modules.
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...await importOriginal<Record<string, unknown>>(),
+  useTranslation: () => ({ t: (key: string, options?: string | { defaultValue?: string }) => typeof options === 'string' ? options : options?.defaultValue ?? key }),
+}));
+
 /**
  * Regression guard for #870: `EditorSidebar` used to return a different root
  * element for the floating layout (mobile or popped out) than for the docked

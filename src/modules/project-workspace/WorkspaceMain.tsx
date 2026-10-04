@@ -3,13 +3,14 @@ import React, { useCallback, useEffect, type Dispatch, type SetStateAction, useS
 import { ChatInterface } from '@/modules/chat';
 import { FileTree } from '@/modules/file-tree';
 import { StandaloneShell } from '@/modules/standalone-shell';
-import { GitPanel } from '@/modules/git-panel';
+import { useAuth } from '@/modules/auth';
 import { PluginTabContent } from '@/modules/plugins';
 import { BrowserUsePanel, useBrowserUseEnabled } from '@/modules/browser-use';
 import { usePaletteOpsRegister } from '@/modules/command-palette';
 import { TaskMasterPanel, useTaskMasterProjectSync, useTasksSettings } from '@/modules/task-master';
 import type { AppTab, DirectoryRevealRequest, Project, ProjectSession, SessionEstablishedContext, SessionNavigationOptions, SettingsMainTab } from '@/shared/types';
 import { useUiPreferences } from '@/shared/context/UiPreferencesContext';
+import { isWorkspaceTabVisible } from '@/shared/utils';
 import { useFileOpenResolver } from '@/modules/project-workspace/hooks/useFileOpenResolver';
 import { EditorSidebar, useEditorSidebar } from '@/modules/code-editor';
 import WorkspaceHeader from '@/modules/project-workspace/WorkspaceHeader';
@@ -31,19 +32,15 @@ type WorkspaceMainProps = {
   onShowSettings: (tab?: SettingsMainTab) => void;
   externalMessageUpdate: number;
   newSessionTrigger: number;
-  /** Switches the app to another project — used by the git panel's Worktrees view. */
-  onProjectSelect: (project: Project) => void;
-  /** Silently re-syncs the sidebar project list after worktree projects change. */
-  onProjectsRefresh: () => void;
   /** Persists a new title for a session; resolves false when the backend refuses it. Used by the header's inline rename. */
   onRenameSession: (sessionId: string, summary: string) => Promise<boolean>;
 };
 
-/** Rendered by ProjectMainRegion to show the selected project's active tab: chat, files, shell, git, tasks, browser or a plugin. */
+/** Rendered by ProjectMainRegion to show the selected project's visible workspace tab. */
 function WorkspaceMain({
   selectedProject,
   selectedSession,
-  activeTab,
+  activeTab: requestedTab,
   setActiveTab,
   ws,
   sendMessage,
@@ -55,11 +52,11 @@ function WorkspaceMain({
   onShowSettings,
   externalMessageUpdate,
   newSessionTrigger,
-  onProjectSelect,
-  onProjectsRefresh,
   onRenameSession,
 }: WorkspaceMainProps) {
   const preferences = useUiPreferences();
+  const { user } = useAuth();
+  const activeTab = isWorkspaceTabVisible(requestedTab, preferences, user?.role === 'admin') ? requestedTab : 'chat';
   const { showRawParameters, showThinking, sendByCtrlEnter } = preferences;
 
   const { tasksEnabled, isTaskMasterInstalled } = useTasksSettings();
@@ -94,6 +91,10 @@ function WorkspaceMain({
   const resolvedFileOpen = useFileOpenResolver(selectedProject, handleFileOpen);
 
   useEffect(() => {
+    if (requestedTab !== activeTab) setActiveTab(activeTab);
+  }, [requestedTab, activeTab, setActiveTab]);
+
+  useEffect(() => {
     if (!shouldShowTasksTab && activeTab === 'tasks') {
       setActiveTab('chat');
     }
@@ -114,9 +115,9 @@ function WorkspaceMain({
 
   const openFile = useCallback((filePath: string) => {
     if (handleFileOpen(filePath)) {
-      setActiveTab('files');
+      if (preferences.showFilesTab) setActiveTab('files');
     }
-  }, [handleFileOpen, setActiveTab]);
+  }, [handleFileOpen, preferences.showFilesTab, setActiveTab]);
 
   // Opens the editor side panel in place, keeping the current tab (e.g. chat).
   const openFileInEditor = useCallback((filePath: string, line?: number | null) => {
@@ -125,9 +126,10 @@ function WorkspaceMain({
 
   // Directories cannot be read as text: reveal them in the file tree instead.
   const openDirectory = useCallback((directoryPath: string) => {
+    if (!preferences.showFilesTab) return;
     setActiveTab('files');
     setRevealDirectory({ path: directoryPath });
-  }, [setActiveTab]);
+  }, [preferences.showFilesTab, setActiveTab]);
 
   // Stable arguments keep usePaletteOpsRegister's effect from tearing down and
   // rewriting the whole palette registry on every render.
@@ -196,18 +198,6 @@ function WorkspaceMain({
                 session={selectedSession}
                 showHeader={false}
                 isActive={activeTab === 'shell'}
-              />
-            </div>
-          )}
-
-          {activeTab === 'git' && (
-            <div className="h-full overflow-hidden">
-              <GitPanel
-                selectedProject={selectedProject}
-                isMobile={isMobile}
-                onFileOpen={handleFileOpen}
-                onProjectSelect={onProjectSelect}
-                onProjectsRefresh={onProjectsRefresh}
               />
             </div>
           )}

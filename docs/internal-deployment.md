@@ -25,6 +25,12 @@ departments and their members; a user can belong to several departments.
 Staff can use shared projects and create private chats with New chat. Only administrators can open the raw shell or change shared
 provider configuration and plugins.
 
+Settings → Appearance → Workspace tabs lets each user hide or show Files;
+administrators can also hide or show Terminal. These personal choices are
+saved with the user's account and apply after signing in on another device.
+Hiding the current tab returns to Chat. Git navigation and the upstream
+star, issue-report and community links are removed from the interface.
+
 The chat owner uses Share chat to grant access to their departments or the
 entire company. Recipients can read and continue the chat, while changing its
 sharing, renaming, editing past prompts and deleting it remain owner actions.
