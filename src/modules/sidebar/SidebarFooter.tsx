@@ -1,4 +1,5 @@
-import { Settings, ArrowUpCircle, Bug, AlertTriangle } from 'lucide-react';
+import { Settings, ArrowUpCircle, Bug, AlertTriangle, BookOpen } from 'lucide-react';
+import { NewChatButton } from '@/modules/company';
 import type { TFunction } from 'i18next';
 
 import { IS_PLATFORM } from '@/shared/utils';
@@ -107,6 +108,10 @@ export default function SidebarFooter({
 
       {/* Community + Settings */}
       <div className="nav-divider" />
+      <div className="px-2 py-1">
+        <NewChatButton />
+        <a href="/skills" className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm hover:bg-accent"><BookOpen className="h-4 w-4" />{t('company.skillsTitle', { ns: 'settings' })}</a>
+      </div>
 
       {/* Desktop Report Issue */}
       <div className="hidden px-2 pt-1.5 md:block">

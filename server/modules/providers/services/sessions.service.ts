@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 
-import { projectsDb, sessionsDb } from '@/modules/database/index.js';
+import { projectsDb, resourceAccessDb, sessionsDb } from '@/modules/database/index.js';
 import { broadcastSessionUpserted, chatRunRegistry } from '@/modules/websocket/index.js';
 import { providerRegistry } from '@/modules/providers/provider.registry.js';
 import { listBusyClaudeCliSessions } from '@/modules/providers/services/claude-cli-liveness.service.js';
@@ -15,7 +15,7 @@ import type {
   NormalizedMessage,
   WorkflowAgentActivity,
 } from '@/shared/types.js';
-import { AppError, sliceTailPage } from '@/shared/utils.js';
+import { AppError, getAccessActor, sliceTailPage, withoutGeneratedSkillContext } from '@/shared/utils.js';
 
 /**
  * One session the running-sessions poll reports as busy.
@@ -208,7 +208,7 @@ export const sessionsService = {
       runningById.set(session.session_id, entries[entries.length - 1]);
     }
 
-    return entries;
+    return getAccessActor() ? entries.filter((entry) => resourceAccessDb.canReadSession(entry.sessionId)) : entries;
   },
 
   /**
@@ -555,7 +555,7 @@ export const sessionsService = {
     return {
       ...result,
       messages: result.messages.map((message) => ({
-        ...message,
+        ...withoutGeneratedSkillContext(message),
         sessionId,
       })),
     };
@@ -680,6 +680,7 @@ export const sessionsService = {
       deletedFromDisk?: boolean;
     } = {},
   ): Promise<{ sessionId: string; action: 'archived' | 'deleted'; deletedFromDisk: boolean }> {
+    resourceAccessDb.assertManageSession(sessionId);
     const session = sessionsDb.getSessionById(sessionId);
     if (!session) {
       throw new AppError(`Session "${sessionId}" was not found.`, {

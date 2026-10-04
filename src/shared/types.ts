@@ -1354,7 +1354,22 @@ export type AgentContext = {
 };
 
 /** Identifier of a top-level section in the settings dialog; use it whenever a tab is stored, compared or requested so deep links, the sidebar and the command palette all agree on the same set of names. */
-export type SettingsMainTab = 'agents' | 'appearance' | 'git' | 'api' | 'voice' | 'tasks' | 'browser' | 'notifications' | 'plugins' | 'users' | 'about';
+export type SettingsMainTab = 'agents' | 'appearance' | 'git' | 'api' | 'voice' | 'tasks' | 'browser' | 'notifications' | 'plugins' | 'users' | 'departments' | 'about';
+
+//----------------- COMPANY SHARING ------------
+/** User-controlled visibility for a chat or skill. */
+export type ResourceVisibility = 'private' | 'departments' | 'company';
+/** A department visible to sharing controls; membership lists are returned only to administrators. */
+export type CompanyDepartment = { id: number; name: string; description: string; memberIds: number[] };
+/** Server-authoritative sharing state and permission to change it. */
+export type ResourceSharing = { ownerUserId: number | null; visibility: ResourceVisibility; departmentIds: number[]; canManage: boolean };
+/** Skill markdown and supporting files edited by the managed library. */
+export type CompanySkill = ResourceSharing & {
+  ownerName?: string;
+  id: string; name: string; description: string; provider: string; content: string;
+  files: Array<{ relativePath: string; content: string; encoding?: 'utf8' | 'base64' }>;
+  createdAt: string; updatedAt: string;
+};
 
 /** The coding-agent CLI a settings screen is configuring, aliasing LLMProvider so agent-scoped settings read as being about an agent rather than a chat model. */
 export type AgentProvider = LLMProvider;

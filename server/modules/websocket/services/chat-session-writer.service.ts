@@ -4,7 +4,8 @@ import type {
   NormalizedMessage,
   RealtimeClientConnection,
 } from '@/shared/types.js';
-import { createCompleteMessage, readObjectRecord } from '@/shared/utils.js';
+import { createCompleteMessage, getConnectionActor, readObjectRecord, withoutGeneratedSkillContext } from '@/shared/utils.js';
+import { resourceAccessDb } from '@/modules/database/index.js';
 
 type ChatSessionWriterOptions = {
   connection: RealtimeClientConnection | null;
@@ -93,7 +94,7 @@ export class ChatSessionWriter {
       return;
     }
 
-    const message = record as NormalizedMessage;
+    const message = withoutGeneratedSkillContext(record as NormalizedMessage);
 
     if (message.kind === 'session_created') {
       const announcedId =
@@ -166,6 +167,11 @@ export class ChatSessionWriter {
     // for a Set — the removed entry is simply not revisited.
     for (const connection of this.connections) {
       if (connection.readyState === WS_OPEN_STATE) {
+        const actor = getConnectionActor(connection);
+        if (actor && message.sessionId && !resourceAccessDb.canReadSession(message.sessionId, actor)) {
+          this.connections.delete(connection);
+          continue;
+        }
         connection.send(payload);
       } else {
         this.connections.delete(connection);

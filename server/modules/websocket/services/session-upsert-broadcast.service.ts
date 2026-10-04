@@ -1,6 +1,7 @@
 import path from 'node:path';
 
-import { projectsDb, sessionsDb } from '@/modules/database/index.js';
+import { projectsDb, resourceAccessDb, sessionsDb } from '@/modules/database/index.js';
+import { getConnectionActor } from '@/shared/utils.js';
 import { generateDisplayName } from '@/modules/projects/index.js';
 import { connectedClients, WS_OPEN_STATE } from '@/modules/websocket/services/websocket-state.service.js';
 import type { SessionUpsertedEvent } from '@/shared/types.js';
@@ -71,6 +72,9 @@ function sendToConnectedClients(payloads: string[]): void {
   connectedClients.forEach((client) => {
     if (client.readyState === WS_OPEN_STATE) {
       for (const payload of payloads) {
+        const actor = getConnectionActor(client);
+        const event = JSON.parse(payload) as { sessionId: string };
+        if (actor && !resourceAccessDb.canReadSession(event.sessionId, actor)) continue;
         client.send(payload);
       }
     }

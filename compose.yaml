@@ -4,6 +4,7 @@ services:
       context: .
       args:
         CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:-2.1.288}
+        SOURCE_REVISION: ${CLOUDCLI_REVISION:-local}
     image: keydev-cloudcli:local
     init: true
     restart: unless-stopped
@@ -15,6 +16,7 @@ services:
       SERVER_PORT: "3001"
       DATABASE_PATH: /home/node/.cloudcli/auth.db
       CLOUDCLI_CONTAINER_DEPLOYMENT: "true"
+      WORKSPACES_ROOT: /workspace
     ports:
       - "${CLOUDCLI_BIND_ADDRESS:-127.0.0.1}:${CLOUDCLI_PORT:-3001}:3001"
     volumes:

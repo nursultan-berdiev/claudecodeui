@@ -87,6 +87,13 @@ export function useProjectSlashCommands(
   // Set when the request failed so a list can explain the emptiness; cleared
   // on the next successful fetch.
   const [error, setError] = useState(false);
+  // Access changes invalidate the cached command list while this composer stays mounted.
+  const [accessRevision, setAccessRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => setAccessRevision((value) => value + 1);
+    window.addEventListener('company-access-changed', refresh);
+    return () => window.removeEventListener('company-access-changed', refresh);
+  }, []);
 
   useEffect(() => {
     if (!enabled) {
@@ -151,7 +158,7 @@ export function useProjectSlashCommands(
     return () => {
       cancelled = true;
     };
-  }, [enabled, selectedProject, provider]);
+  }, [accessRevision, enabled, selectedProject, provider]);
 
   return { commands, isLoading, error };
 }

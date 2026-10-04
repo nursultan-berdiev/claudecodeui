@@ -723,6 +723,16 @@ export function useProjectsState({
   // "suppress updates while a run is active" protection is needed anymore.
   useEffect(() => {
     const handleEvent = (event: ServerEvent) => {
+      if (event.kind === 'company_access_changed') {
+        setProjects([]);
+        setSelectedProject((project) => project ? { ...project, sessions: [] } : null);
+        void refreshProjectsSilently();
+        const currentId = selectedSessionRef.current?.id ?? sessionId;
+        if (currentId) void api.sessionDetails(currentId).then((response) => {
+          if (!response.ok) { setSelectedSession(null); navigate('/', { replace: true }); }
+        });
+        return;
+      }
       // The project list is maintained purely by incremental `session_upserted`
       // deltas, so anything that happened while the socket was down is missing
       // from it until something else forces a refresh. Chat re-syncs itself on

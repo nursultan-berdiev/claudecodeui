@@ -7,6 +7,7 @@ import { cn } from '@/shared/utils';
 import MobileMenuButton from '@/modules/project-workspace/MobileMenuButton';
 import WorkspaceTabs from '@/modules/project-workspace/WorkspaceTabs';
 import WorkspaceTitle from '@/modules/project-workspace/WorkspaceTitle';
+import { ChatSharing } from '@/modules/company';
 
 type WorkspaceHeaderProps = {
   activeTab: AppTab;
@@ -106,6 +107,7 @@ export default function WorkspaceHeader({
             shouldShowTasksTab={shouldShowTasksTab}
             onRenameSession={onRenameSession}
           />
+          {selectedSession && <ChatSharing sessionId={selectedSession.id} />}
         </div>
 
         <div className="-mx-3 min-w-0 sm:mx-0 sm:flex-1">

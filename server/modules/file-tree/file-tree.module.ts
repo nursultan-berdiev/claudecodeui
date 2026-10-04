@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import fs, { promises as fsPromises } from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 
 import mime from 'mime-types';
 import multer from 'multer';
 
-import { projectsDb } from '@/modules/database/index.js';
+import { projectsDb, sessionsDb } from '@/modules/database/index.js';
 import { createFileTreeRouter } from '@/modules/file-tree/file-tree.routes.js';
 import { createFileTreeService } from '@/modules/file-tree/file-tree.service.js';
 import type {
@@ -14,7 +15,7 @@ import type {
   FileTreeProjectGateway,
   FileTreeWorkspaceGateway,
 } from '@/shared/types.js';
-import { WORKSPACES_ROOT, resolveReadOnlyRootPath, validateWorkspacePath } from '@/shared/utils.js';
+import { getAccessActor, WORKSPACES_ROOT, resolveReadOnlyRootPath, validateWorkspacePath } from '@/shared/utils.js';
 
 const MAXIMUM_UPLOAD_SIZE_MEGABYTES = 200;
 const MAXIMUM_UPLOAD_SIZE_BYTES = MAXIMUM_UPLOAD_SIZE_MEGABYTES * 1024 * 1024;
@@ -73,7 +74,14 @@ const fileTreeProjects: FileTreeProjectGateway = {
 const fileTreeWorkspace: FileTreeWorkspaceGateway = {
   rootPath: WORKSPACES_ROOT,
   validatePath: (candidatePath) => validateWorkspacePath(candidatePath),
-  resolveReadOnlyRootPath: (candidatePath) => resolveReadOnlyRootPath(candidatePath),
+  resolveReadOnlyRootPath: async (candidatePath) => {
+    const resolved = await resolveReadOnlyRootPath(candidatePath);
+    if (!resolved || !getAccessActor()) return resolved;
+    const allowed = [...sessionsDb.getAllSessions(), ...sessionsDb.getArchivedSessions()].some((session) => session.jsonl_path
+      && (resolved === session.jsonl_path || (session.provider_session_id
+        && resolved.startsWith(path.join(path.dirname(session.jsonl_path), session.provider_session_id) + path.sep))));
+    return allowed ? resolved : null;
+  },
 };
 
 const fileTreeLogger: FileTreeLogger = {

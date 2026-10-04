@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import fs from 'node:fs';
 import {
   access,
@@ -21,6 +22,7 @@ import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { parseFrontMatter } from '@/shared/frontmatter.js';
 import type {
   AnyRecord,
+  AccessActor,
   ApiSuccessShape,
   AppErrorOptions,
   NormalizedMessage,
@@ -30,6 +32,39 @@ import type {
   SubagentActivity,
   WorkspacePathValidationResult,
 } from '@/shared/types.js';
+
+//----------------- AUTHENTICATED ACCESS CONTEXT ------------
+const actorStorage = new AsyncLocalStorage<AccessActor | null>();
+const connectionActors = new WeakMap<object, AccessActor>();
+
+/** Used by authenticated entrypoints to carry the current user across asynchronous service calls. */
+export function withAccessActor<T>(actor: AccessActor | null, operation: () => T): T {
+  return actorStorage.run(actor, operation);
+}
+
+/** Used by repositories and runtimes; an absent actor denotes a trusted startup/indexing operation. */
+export function getAccessActor(): AccessActor | null {
+  return actorStorage.getStore() ?? null;
+}
+
+/** Used by the WebSocket gateway to retain the viewer identity for later broadcasts. */
+export function bindConnectionActor(connection: object, actor: AccessActor): void {
+  connectionActors.set(connection, actor);
+}
+
+/** Used by live writers to recheck access when sharing or department membership changes. */
+export function getConnectionActor(connection: object): AccessActor | null {
+  return connectionActors.get(connection) ?? null;
+}
+
+/** Used by live and persisted history adapters to keep generated skill context out of the user's visible message. */
+export function withoutGeneratedSkillContext(message: NormalizedMessage): NormalizedMessage {
+  if (message.role !== 'user' || typeof message.content !== 'string') return message;
+  const content = message.content.replace(/^<available_skills>[\s\S]*?<\/available_skills>\n(?:<requested_skill>[\s\S]*?<\/requested_skill>\n)?/, '');
+  return content === message.content ? message : { ...message, content };
+}
+
+// ---------------------------
 
 //----------------- ENVIRONMENT UTILITIES ------------
 /**

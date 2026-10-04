@@ -3,6 +3,8 @@ export { closeConnection, getConnection, getDatabasePath } from '@/modules/datab
 export { apiKeysDb } from '@/modules/database/repositories/api-keys.js';
 export { appConfigDb } from '@/modules/database/repositories/app-config.js';
 export { authAuditDb } from '@/modules/database/repositories/auth-audit.js';
+export { resourceAccessDb } from '@/modules/database/repositories/resource-access.db.js';
+export { companyDb } from '@/modules/database/repositories/company.db.js';
 export { credentialsDb } from '@/modules/database/repositories/credentials.js';
 export { githubTokensDb } from '@/modules/database/repositories/github-tokens.js';
 export { notificationChannelEndpointsDb } from '@/modules/database/repositories/notification-channel-endpoints.js';

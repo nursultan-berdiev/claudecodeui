@@ -1,8 +1,8 @@
 # Internal CloudCLI deployment
 
 This fork runs one CloudCLI server for a trusted team. Staff use separate local
-CloudCLI accounts. Projects, sessions, the coding-agent runtime, and its Claude
-Code/Codex credentials are shared by everyone who can use the service.
+CloudCLI accounts. Project source folders and the provider credentials are
+shared. New chats are private to their creator until that creator shares them.
 
 ## Run with Docker Compose
 
@@ -20,9 +20,32 @@ curl -fsS http://127.0.0.1:3001/health
 The initial port bind is loopback only. Open `http://127.0.0.1:3001` locally and
 create the initial administrator before allowing other clients to reach the
 service. In Settings → Users, that administrator creates staff accounts and can
-disable accounts or reset local passwords. Staff can use the shared projects
-and agent sessions. Only administrators can open the raw shell or change shared
+disable accounts or reset local passwords. Settings → Departments manages
+departments and their members; a user can belong to several departments.
+Staff can use shared projects and create private chats with New chat. Only administrators can open the raw shell or change shared
 provider configuration and plugins.
+
+The chat owner uses Share chat to grant access to their departments or the
+entire company. Recipients can read and continue the chat, while changing its
+sharing, renaming, editing past prompts and deleting it remain owner actions.
+Access is checked for history, search, pagination, attachments, WebSocket
+subscriptions, replay and live events. Removing a grant or a department member
+also removes access to subsequent live events. Chats that existed before this
+migration retain their previous company-wide visibility and are assigned to
+the initial administrator. Newly indexed external CLI chats are private to that
+administrator.
+An older chat workspace pointing at the container user's home is migrated to
+`/workspace/chats`. Its existing transcript and identifiers are retained, and
+an indexing alias prevents later scans from restoring the old home path.
+
+The separate Skills library is available from the sidebar. Users create or
+import private skills, edit SKILL.md and supporting files, and share them with
+selected departments or the company. Shared users can read and use a skill;
+its owner and an administrator can edit it. Existing provider skills are
+imported once as company skills. A run exports only authorized definitions.
+In a shared chat, a skill must also be shared with the chat's audience before
+it can be used, so private skill instructions do not get disclosed to that
+audience. Skill edits apply on the next run.
 
 To serve a LAN, put an HTTPS reverse proxy in front of `127.0.0.1:3001`, or set
 `CLOUDCLI_BIND_ADDRESS` to a trusted LAN address in `.env.docker` and restart
@@ -66,17 +89,21 @@ the directory, and keep directory passwords out of the CloudCLI database. The
 choice between LDAPS and OIDC needs the actual directory topology and group
 names; neither connector is enabled in this release.
 
-Browser users share one process and filesystem. Hiding another user's project
-in the UI would not isolate it from coding agents that can run commands. A
-private-workspace version needs separate user runners or containers, not only
-project filters in HTTP routes. The current authorization model deliberately
-keeps projects and sessions shared.
+These permissions are an application access boundary. Provider processes still
+run under one service user in one container, and project source folders remain
+shared. Arbitrary agent shell commands or the administrative shell can inspect
+the service user's filesystem, including runtime transcripts. Full isolation
+against such filesystem access requires separate runners/containers and is
+not provided by these application grants. Deploy this runtime only for trusted
+employees; the private chat UI/API does not provide a hostile-code sandbox.
 
 ## Validation
 
 Run `npm run typecheck`, the focused auth/database tests, `npm run build`, and
 `docker compose --env-file .env.docker build`. In a disposable instance, verify
 bootstrap, staff login, admin-only API/terminal access, password-reset token
-revocation, account disable, audit events, and `/health`. Audit entries store
+revocation, account disable, department grants, private/shared chat discovery
+and stream revocation, skill owner editing, audience-scoped skill use, audit
+events, and `/health`. Audit entries store
 the actor, action path, result status, and timestamp; they never store request
 bodies or credentials.

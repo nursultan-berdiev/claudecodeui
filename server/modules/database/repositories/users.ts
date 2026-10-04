@@ -55,8 +55,8 @@ export const userDb = {
   createUser(username: string, passwordHash: string, role: 'admin' | 'member' = 'member'): CreateUserResult {
     const db = getConnection();
     const result = db
-      .prepare('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)')
-      .run(username, passwordHash, role);
+      .prepare('INSERT INTO users (username, password_hash, role, has_completed_onboarding) VALUES (?, ?, ?, ?)')
+      .run(username, passwordHash, role, role === 'member' ? 1 : 0);
     return { id: result.lastInsertRowid, username, role, auth_version: 0 };
   },
 

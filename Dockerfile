@@ -13,6 +13,8 @@ RUN npm run build && npm prune --omit=dev --no-audit --no-fund
 
 FROM node:22-bookworm-slim
 
+ARG SOURCE_REVISION=local
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 ARG CLAUDE_CODE_VERSION=2.1.288
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git openssh-client \

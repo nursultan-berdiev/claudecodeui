@@ -1,7 +1,7 @@
 // @ts-nocheck -- JWT request augmentation is narrowed by Auth route contracts.
 import jwt from 'jsonwebtoken';
 
-import { IS_PLATFORM } from '@/shared/utils.js';
+import { IS_PLATFORM, withAccessActor } from '@/shared/utils.js';
 
 import { userDb, appConfigDb, authAuditDb } from '../database/index.js';
 
@@ -32,7 +32,7 @@ const authenticateToken = async (req, res, next) => {
         return res.status(500).json({ error: 'Platform mode: No user found in database' });
       }
       req.user = user;
-      return next();
+      return withAccessActor({ id: user.id, role: user.role }, next);
     } catch (error) {
       console.error('Platform mode error:', error);
       return res.status(500).json({ error: 'Platform mode: Failed to fetch user' });
@@ -90,7 +90,7 @@ const authenticateToken = async (req, res, next) => {
         }
       });
     }
-    next();
+    withAccessActor({ id: user.id, role: user.role }, next);
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
       res.setHeader('X-Auth-Error', 'session-expired');

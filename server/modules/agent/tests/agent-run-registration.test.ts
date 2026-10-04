@@ -9,7 +9,7 @@ import test from 'node:test';
 
 import express from 'express';
 
-import { closeConnection, initializeDatabase, sessionsDb } from '@/modules/database/index.js';
+import { closeConnection, initializeDatabase, sessionsDb, userDb } from '@/modules/database/index.js';
 import { chatRunRegistry, connectedClients } from '@/modules/websocket/index.js';
 import type { NormalizedMessage } from '@/shared/types.js';
 import { createNormalizedMessage } from '@/shared/utils.js';
@@ -34,6 +34,7 @@ async function withIsolatedDatabase(run: () => Promise<void>): Promise<void> {
   closeConnection();
   process.env.DATABASE_PATH = path.join(tempDirectory, 'auth.db');
   await initializeDatabase();
+  userDb.createUser('test-owner', 'hash', 'admin');
   try {
     await run();
   } finally {

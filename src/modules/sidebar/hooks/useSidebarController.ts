@@ -283,6 +283,17 @@ export function useSidebarController({
   const reloadRecentConversations = useCallback(() => {
     void fetchRecentConversationsPage(0, false);
   }, [fetchRecentConversationsPage]);
+  useEffect(() => {
+    const refresh = () => {
+      eventSourceRef.current?.close();
+      searchSeqRef.current += 1;
+      setSearchFilter(''); setDebouncedSearchQuery(''); setConversationResults(null);
+      setRecentConversations([]); setArchivedSessions([]);
+      reloadRecentConversations(); void fetchArchivedSessions();
+    };
+    window.addEventListener('company-access-changed', refresh);
+    return () => window.removeEventListener('company-access-changed', refresh);
+  }, [fetchArchivedSessions, reloadRecentConversations]);
 
   const loadMoreRecentConversations = useCallback(() => {
     if (isLoadingMoreRecentConversations || !recentConversationsHasMore) {

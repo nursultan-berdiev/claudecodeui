@@ -1,7 +1,10 @@
 import { Database } from 'better-sqlite3';
+import os from 'node:os';
+import path from 'node:path';
 
 import {
   AUDIT_EVENTS_TABLE_SCHEMA_SQL,
+  COMPANY_ACCESS_SCHEMA_SQL,
   APP_CONFIG_TABLE_SCHEMA_SQL,
   LAST_SCANNED_AT_SQL,
   NOTIFICATION_CHANNEL_ENDPOINTS_TABLE_SCHEMA_SQL,
@@ -507,6 +510,7 @@ export const runMigrations = (db: Database) => {
       'has_completed_onboarding',
       'BOOLEAN DEFAULT 0'
     );
+    db.exec("UPDATE users SET has_completed_onboarding = 1 WHERE role = 'member'");
 
     db.exec(APP_CONFIG_TABLE_SCHEMA_SQL);
     db.exec(USER_NOTIFICATION_PREFERENCES_TABLE_SCHEMA_SQL);
@@ -536,6 +540,25 @@ export const runMigrations = (db: Database) => {
     addSessionModelColumn(db);
     addSessionEffortColumn(db);
     addForkedFromSessionIdColumn(db);
+    const sessionColumns = getTableInfo(db, 'sessions').map((column) => column.name);
+    addColumnToTableIfNotExists(db, 'sessions', sessionColumns, 'owner_user_id', 'INTEGER');
+    addColumnToTableIfNotExists(db, 'sessions', sessionColumns, 'visibility', "TEXT NOT NULL DEFAULT 'company'");
+    db.exec(`UPDATE sessions SET owner_user_id = (SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1)
+      WHERE owner_user_id IS NULL`);
+    db.exec(COMPANY_ACCESS_SCHEMA_SQL);
+    if (process.env.CLOUDCLI_CONTAINER_DEPLOYMENT === 'true' && process.env.WORKSPACES_ROOT) {
+      const originalPath = os.homedir();
+      const workspacePath = path.join(process.env.WORKSPACES_ROOT, 'chats');
+      const original = db.prepare('SELECT project_id FROM projects WHERE project_path = ?').get(originalPath);
+      if (original) db.transaction(() => {
+        db.prepare('INSERT OR REPLACE INTO workspace_aliases VALUES (?, ?)').run(originalPath, workspacePath);
+        const target = db.prepare('SELECT project_id FROM projects WHERE project_path = ?').get(workspacePath);
+        if (target) {
+          db.prepare('UPDATE sessions SET project_path = ? WHERE project_path = ?').run(workspacePath, originalPath);
+          db.prepare('DELETE FROM projects WHERE project_path = ?').run(originalPath);
+        } else db.prepare('UPDATE projects SET project_path = ? WHERE project_path = ?').run(workspacePath, originalPath);
+      })();
+    }
     ensureProjectsForSessionPaths(db);
     db.exec(SCHEDULED_MESSAGES_TABLE_SCHEMA_SQL);
 

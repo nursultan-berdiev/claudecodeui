@@ -28,6 +28,7 @@ type ValidatedApiKeyUser = {
   id: number;
   username: string;
   api_key_id: number;
+  role: 'admin' | 'member';
 };
 
 // ---------------------------------------------------------------------------
@@ -77,7 +78,7 @@ export const apiKeysDb = {
     const db = getConnection();
     const row = db
       .prepare(
-        `SELECT u.id, u.username, ak.id as api_key_id
+        `SELECT u.id, u.username, u.role, ak.id as api_key_id
          FROM api_keys ak
          JOIN users u ON ak.user_id = u.id
          WHERE ak.api_key = ? AND ak.is_active = 1 AND u.is_active = 1`

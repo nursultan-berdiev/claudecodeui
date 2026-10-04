@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Tooltip, PillBar, Pill } from '@/shared/ui';
 import type { AppTab } from '@/shared/types';
 import { usePlugins,PluginIcon } from '@/modules/plugins';
+import { useAuth } from '@/modules/auth';
 
 type WorkspaceTabsProps = {
   activeTab: AppTab;
@@ -61,9 +62,10 @@ export default function WorkspaceTabs({
 }: WorkspaceTabsProps) {
   const { t } = useTranslation();
   const { plugins } = usePlugins();
+  const { user } = useAuth();
 
   const builtInTabs: BuiltInTab[] = [
-    ...BASE_TABS,
+    ...BASE_TABS.filter((tab) => tab.id !== 'shell' || user?.role === 'admin'),
     ...(shouldShowBrowserTab ? [BROWSER_TAB] : []),
     ...(shouldShowTasksTab ? [TASKS_TAB] : []),
   ];

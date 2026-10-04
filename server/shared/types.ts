@@ -1574,3 +1574,19 @@ export type CliApplication = {
 export type SandboxCommandService = {
   execute(argumentsList: string[]): Promise<number>;
 };
+//----------------- COMPANY ACCESS ------------
+/** Authenticated application identity used by HTTP, WebSocket and scheduled runs to scope resources. */
+export type AccessActor = { id: number; role: 'admin' | 'member' };
+/** Owner-only, selected-department or company-wide visibility for a chat or managed skill. */
+export type ResourceVisibility = 'private' | 'departments' | 'company';
+/** Company department returned to access editors and administrative membership screens. */
+export type DepartmentRecord = { id: number; name: string; description: string; memberIds: number[] };
+/** A share configuration returned to resource owners; departments are explicit grant ids. */
+export type ResourceSharing = { ownerUserId: number | null; visibility: ResourceVisibility; departmentIds: number[]; canManage: boolean };
+/** Managed skill content and supporting files; visibility controls both UI discovery and runtime use. */
+export type ManagedSkillRecord = ResourceSharing & {
+  ownerName?: string;
+  id: string; name: string; description: string; provider: string; content: string;
+  files: Array<{ relativePath: string; content: string; encoding?: 'utf8' | 'base64' }>;
+  createdAt: string; updatedAt: string;
+};

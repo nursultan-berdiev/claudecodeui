@@ -38,7 +38,7 @@ export default function AgentsSettingsTab({
   const visibleCategories = useMemo<AgentCategory[]>(() => (
     !isAdmin ? ['account'] : selectedAgent === 'opencode'
       ? ['account', 'permissions', 'mcp']
-      : ['account', 'permissions', 'mcp', 'skills']
+      : ['account', 'permissions', 'mcp']
   ), [isAdmin, selectedAgent]);
 
   const visibleAgents = useMemo<AgentProvider[]>(() => {

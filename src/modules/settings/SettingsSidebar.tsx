@@ -28,6 +28,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'plugins', labelKey: 'mainTabs.plugins', icon: Puzzle },
   { id: 'notifications', labelKey: 'mainTabs.notifications', icon: Bell },
   { id: 'users', labelKey: 'mainTabs.users', icon: Users },
+  { id: 'departments', labelKey: 'mainTabs.departments', icon: Users },
   { id: 'about', labelKey: 'mainTabs.about', icon: Info },
 ];
 
@@ -36,7 +37,7 @@ export default function SettingsSidebar({ activeTab, onChange }: SettingsSidebar
   const { t } = useTranslation('settings');
   const { user } = useAuth();
   const visibleItems = NAV_ITEMS.filter((item) =>
-    user?.role === 'admin' || !['users', 'plugins'].includes(item.id));
+    user?.role === 'admin' || !['users', 'plugins', 'departments'].includes(item.id));
 
   return (
     <>

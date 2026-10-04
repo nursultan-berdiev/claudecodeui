@@ -20,7 +20,7 @@ async function withIsolatedDatabase(runTest: (userId: number) => void | Promise<
   await initializeDatabase();
 
   try {
-    const user = userDb.createUser('scheduler', 'hash');
+    const user = userDb.createUser('scheduler', 'hash', 'admin');
     sessionsDb.createAppSession(SESSION_ID, 'claude', tempDirectory, 'Scheduled session');
     await runTest(Number(user.id));
   } finally {

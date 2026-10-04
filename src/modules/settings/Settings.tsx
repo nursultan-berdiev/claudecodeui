@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 
 import { ProviderLoginModal } from '@/modules/provider-auth';
 import { useAuth, UsersAdminPanel } from '@/modules/auth';
+import { DepartmentsPanel } from '@/modules/company';
 import { Button } from '@/shared/ui';
 import SettingsSidebar from '@/modules/settings/SettingsSidebar';
 import AgentsSettingsTab from '@/modules/settings/tabs/agents-settings/AgentsSettingsTab';
@@ -72,7 +73,7 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
     isOpen,
     initialTab
   });
-  const visibleTab = !isAdmin && (activeTab === 'users' || activeTab === 'plugins') ? 'agents' : activeTab;
+  const visibleTab = !isAdmin && (activeTab === 'users' || activeTab === 'plugins' || activeTab === 'departments') ? 'agents' : activeTab;
 
   const {
     permission: pushPermission,
@@ -280,6 +281,7 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
               {visibleTab === 'plugins' && isAdmin && <PluginSettingsTab />}
 
               {visibleTab === 'users' && isAdmin && <UsersAdminPanel />}
+              {visibleTab === 'departments' && isAdmin && <DepartmentsPanel />}
 
               {visibleTab === 'about' && <AboutTab />}
             </div>

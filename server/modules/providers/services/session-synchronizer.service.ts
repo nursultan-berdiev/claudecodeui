@@ -4,6 +4,7 @@ import { access } from 'node:fs/promises';
 import { scanStateDb, sessionsDb } from '@/modules/database/index.js';
 import { providerRegistry } from '@/modules/providers/provider.registry.js';
 import type { LLMProvider } from '@/shared/types.js';
+import { withAccessActor } from '@/shared/utils.js';
 
 type SessionSynchronizeResult = {
   processedByProvider: Record<LLMProvider, number>;
@@ -136,7 +137,7 @@ export const sessionSynchronizerService = {
       return inFlightSynchronization;
     }
 
-    inFlightSynchronization = runSessionSynchronization().finally(() => {
+    inFlightSynchronization = withAccessActor(null, runSessionSynchronization).finally(() => {
       inFlightSynchronization = null;
     });
 
@@ -151,7 +152,7 @@ export const sessionSynchronizerService = {
     filePath: string
   ): Promise<{ provider: LLMProvider; indexed: boolean; sessionId: string | null }> {
     const resolvedProvider = providerRegistry.resolveProvider(provider);
-    const sessionId = await resolvedProvider.sessionSynchronizer.synchronizeFile(filePath);
+    const sessionId = await withAccessActor(null, () => resolvedProvider.sessionSynchronizer.synchronizeFile(filePath));
     return {
       provider,
       indexed: Boolean(sessionId),

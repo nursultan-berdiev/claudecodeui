@@ -1,4 +1,5 @@
-import { scheduledMessagesDb, sessionDraftsDb } from '@/modules/database/index.js';
+import { scheduledMessagesDb, sessionDraftsDb, userDb } from '@/modules/database/index.js';
+import { withAccessActor } from '@/shared/utils.js';
 import type { QueuedSessionMessageRecord, ScheduledMessageRow } from '@/modules/database/index.js';
 import { chatRunRegistry, runDetachedChatTurn } from '@/modules/websocket/index.js';
 import type { ProviderRuntimeGateway } from '@/modules/websocket/index.js';
@@ -94,7 +95,8 @@ export async function dispatchQueuedMessages(runtime: ProviderRuntimeGateway): P
       return;
     }
     claimed += 1;
-    await sendClaimedQueuedMessage(candidate, runtime);
+    const actor = userDb.getUserById(Number(candidate.userId));
+    if (actor) await withAccessActor({ id: Number(actor.id), role: actor.role }, () => sendClaimedQueuedMessage(candidate, runtime));
   }));
 
   return claimed;
@@ -105,7 +107,9 @@ async function sendClaimedMessage(
   runtime: ProviderRuntimeGateway,
 ): Promise<void> {
   try {
-    const result = await runDetachedChatTurn(
+    const actor = userDb.getUserById(Number(row.user_id));
+    if (!actor) throw new Error('User is disabled or removed');
+    const result = await withAccessActor({ id: Number(actor.id), role: actor.role }, () => runDetachedChatTurn(
       {
         sessionId: row.session_id,
         userId: row.user_id,
@@ -117,7 +121,7 @@ async function sendClaimedMessage(
         interruptActiveRun: true,
       },
       { runtime },
-    );
+    ));
 
     // Recorded rather than retried, and recorded whether the run never started
     // (deleted session, unavailable provider) or started and then failed.

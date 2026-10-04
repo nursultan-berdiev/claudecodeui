@@ -157,6 +157,18 @@ const pluginAssetPath = (pluginName: string, assetFile: string) =>
 // import a named method instead of assembling URLs of their own.
 
 export const api = {
+  company: {
+    departments: () => get('/api/company/departments'),
+    createDepartment: (input: unknown) => post('/api/company/departments', input),
+    updateDepartment: (id: number, input: unknown) => put(`/api/company/departments/${id}`, input),
+    deleteDepartment: (id: number) => del(`/api/company/departments/${id}`),
+    chatSharing: (id: string) => get(`/api/company/chats/${encodeURIComponent(id)}/sharing`),
+    updateChatSharing: (id: string, sharing: unknown) => put(`/api/company/chats/${encodeURIComponent(id)}/sharing`, sharing),
+    skills: () => get('/api/company/skills'),
+    createSkill: (input: unknown) => post('/api/company/skills', input),
+    updateSkill: (id: string, input: unknown) => put(`/api/company/skills/${encodeURIComponent(id)}`, input),
+    deleteSkill: (id: string) => del(`/api/company/skills/${encodeURIComponent(id)}`),
+  },
   // Auth endpoints (no token required)
   auth: {
     status: () => fetch('/api/auth/status'),
