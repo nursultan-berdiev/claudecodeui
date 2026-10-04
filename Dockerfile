@@ -17,7 +17,7 @@ ARG SOURCE_REVISION=local
 LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 ARG CLAUDE_CODE_VERSION=2.1.288
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates git openssh-client \
+    ca-certificates git openssh-client python3 python3-docx python3-openpyxl poppler-utils unzip \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" --no-audit --no-fund
 

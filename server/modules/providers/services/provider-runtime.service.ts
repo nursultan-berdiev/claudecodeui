@@ -77,7 +77,15 @@ export function createProviderRuntimeService(
       await companySkillsService.importDiscovered(providerName, await provider.skills.listSkills({ workspacePath: typeof options.cwd === 'string' ? options.cwd : undefined }));
       command = await companySkillsService.preparePrompt(providerName, command, String(options.sessionId ?? 'new'));
     }
-    return provider.runtime.run(command, options, writer, createRuntimeContext(provider));
+    // Our Auto preset is unattended execution; Claude's native auto can fall back to manual approval.
+    const runtimeOptions = options.permissionMode === 'auto'
+      ? {
+        ...options,
+        permissionMode: 'bypassPermissions',
+        ...(providerName === 'cursor' ? { skipPermissions: true } : {}),
+      }
+      : options;
+    return provider.runtime.run(command, runtimeOptions, writer, createRuntimeContext(provider));
   };
 
   return {

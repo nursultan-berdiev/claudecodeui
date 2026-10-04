@@ -17,6 +17,7 @@ import type {
   SessionNavigationOptions,
 } from '@/shared/types';
 import { useChatProviderState } from '@/modules/chat/hooks/useChatProviderState';
+import { useAutoToolApprovals } from '@/modules/chat/hooks/useAutoToolApprovals';
 import { useScheduledMessages } from '@/modules/chat/composer/useScheduledMessages';
 import { useChatSessionState } from '@/modules/chat/hooks/useChatSessionState';
 import { useChatRealtimeHandlers } from '@/modules/chat/hooks/useChatRealtimeHandlers';
@@ -278,6 +279,13 @@ function ChatInterface({
       }],
     });
   }, [isActive, requestLatestMessages, selectedProject, selectedSession, sendMessage]);
+
+  useAutoToolApprovals({
+    permissionMode,
+    sessionId: selectedSession?.id ?? currentSessionId,
+    pendingRequests: pendingPermissionRequests,
+    onDecision: handlePermissionDecision,
+  });
 
   useChatRealtimeHandlers({
     isActive,

@@ -229,6 +229,16 @@ function transformCodexEvent(event: AnyRecord): AnyRecord {
  */
 function mapPermissionModeToCodexOptions(permissionMode: string): Pick<ThreadOptions, 'sandboxMode' | 'approvalPolicy'> {
   switch (permissionMode) {
+    case 'plan':
+      return {
+        sandboxMode: 'read-only',
+        approvalPolicy: 'never'
+      };
+    case 'auto':
+      return {
+        sandboxMode: 'danger-full-access',
+        approvalPolicy: 'never'
+      };
     case 'acceptEdits':
       return {
         sandboxMode: 'workspace-write',

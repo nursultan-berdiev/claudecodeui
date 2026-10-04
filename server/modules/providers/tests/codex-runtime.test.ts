@@ -9,7 +9,7 @@ import { codexRuntime } from '@/modules/providers/list/codex/codex-runtime.provi
 import type { ProviderRuntimeContext } from '@/shared/index.js';
 
 for (const resumed of [false, true]) {
-  for (const permissionMode of [undefined, 'default', 'unknown', 'acceptEdits', 'bypassPermissions']) {
+  for (const permissionMode of [undefined, 'default', 'unknown', 'acceptEdits', 'bypassPermissions', 'auto', 'plan']) {
     test(`Codex ${resumed ? 'resumes' : 'starts'} with supported permissions (${permissionMode ?? 'omitted'})`, async (t) => {
       let capturedOptions: ThreadOptions | undefined;
       let capturedPrompt: unknown;
@@ -50,8 +50,9 @@ for (const resumed of [false, true]) {
       assert.equal(start.mock.callCount(), resumed ? 0 : 1);
       assert.equal(resume.mock.callCount(), resumed ? 1 : 0);
       assert.equal(capturedPrompt, 'hey there');
-      assert.equal(capturedOptions?.sandboxMode, permissionMode === 'bypassPermissions' ? 'danger-full-access' : 'workspace-write');
-      assert.equal(capturedOptions?.approvalPolicy, permissionMode === 'acceptEdits' || permissionMode === 'bypassPermissions' ? 'never' : 'on-request');
+      const automatic = permissionMode === 'bypassPermissions' || permissionMode === 'auto';
+      assert.equal(capturedOptions?.sandboxMode, permissionMode === 'plan' ? 'read-only' : automatic ? 'danger-full-access' : 'workspace-write');
+      assert.equal(capturedOptions?.approvalPolicy, ['acceptEdits', 'bypassPermissions', 'auto', 'plan'].includes(permissionMode ?? '') ? 'never' : 'on-request');
       assert.ok(messages.some((message: any) => message.kind === 'complete' && message.exitCode === 0));
       assert.ok(!messages.some((message: any) => message.kind === 'error'));
     });

@@ -329,13 +329,27 @@ export function useSlashCommands({
       }
 
       if (event.key === 'Tab' || event.key === 'Enter') {
-        event.preventDefault();
-        // Until the user arrows through the menu nothing is highlighted, so both
-        // keys act on the first match — the entry the menu renders at the top.
-        const targetCommand = filteredCommands[selectedCommandIndex >= 0 ? selectedCommandIndex : 0];
+        // With no highlighted entry, resolve the typed command before using a suggestion.
+        // Pasting a command then pressing Enter can outrun the debounced suggestion query.
+        const textarea = textareaRef.current;
+        const typedCommand = textarea?.value.slice(0, textarea.selectionStart).match(/(?:^|\s)(\/\S*)$/);
+        const currentMatches = typedCommand
+          ? filterSlashCommands(slashCommands, typedCommand[1].slice(1))
+          : filteredCommands;
+        const targetCommand = selectedCommandIndex >= 0
+          ? filteredCommands[selectedCommandIndex]
+          : currentMatches[0];
         if (!targetCommand) {
+          event.preventDefault();
           return true;
         }
+
+        if (event.key === 'Enter' && selectedCommandIndex < 0 && isSkillCommand(targetCommand)
+          && textarea?.value.trim() === targetCommand.name) {
+          resetCommandMenuState();
+          return false;
+        }
+        event.preventDefault();
 
         // Tab is completion, not submission: it only writes "<name> " into the
         // input and closes the menu, so an argument can still be typed before
@@ -363,6 +377,8 @@ export function useSlashCommands({
       resetCommandMenuState,
       selectCommandFromKeyboard,
       selectedCommandIndex,
+      slashCommands,
+      textareaRef,
     ],
   );
 

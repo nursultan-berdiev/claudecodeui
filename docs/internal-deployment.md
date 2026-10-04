@@ -31,6 +31,18 @@ saved with the user's account and apply after signing in on another device.
 Hiding the current tab returns to Chat. Git navigation and the upstream
 star, issue-report and community links are removed from the interface.
 
+The chat composer exposes Plan and Auto. Plan is the initial choice when no
+mode has been saved; Codex uses a read-only sandbox for it. Auto runs shell
+commands and file writes without manual tool approval. The dispatcher maps
+this application preset to the provider's unattended execution controls,
+not to Claude's classifier-based native `auto` mode. Human questions and plan
+confirmation stay interactive. Selecting Auto also resumes ordinary tool
+requests already waiting in the current chat. Legacy edit/bypass selections
+are restored as Auto; the other legacy choices become Plan.
+
+The Docker runtime includes Python, python-docx, openpyxl, pdftotext and unzip
+for reading DOCX, XLSX and text-based PDFs during document workflows.
+
 The chat owner uses Share chat to grant access to their departments or the
 entire company. Recipients can read and continue the chat, while changing its
 sharing, renaming, editing past prompts and deleting it remain owner actions.

@@ -136,3 +136,13 @@ test('routes permission decisions through provider-owned runtime capabilities', 
     { requestId: 'request-1', sessionId: 'session-1' },
   ]);
 });
+
+test('Auto dispatches non-interactive execution instead of the classifier mode that can ask for approval', async () => {
+  const runtime = createRuntime({
+    async run(_command, options) {
+      assert.equal(options.permissionMode, 'bypassPermissions');
+    },
+  });
+  const service = createService([createProvider('claude', runtime)]);
+  await service.run('claude', 'read and save the lesson result', { permissionMode: 'auto' }, { send() {} });
+});

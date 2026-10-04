@@ -66,11 +66,7 @@ const normalizeMainTab = (tab: string): SettingsMainTab => {
 };
 
 const toCodexPermissionMode = (value: unknown): CodexPermissionMode => {
-  if (value === 'acceptEdits' || value === 'bypassPermissions') {
-    return value;
-  }
-
-  return 'default';
+  return value === 'auto' || value === 'acceptEdits' || value === 'bypassPermissions' ? 'auto' : 'plan';
 };
 
 const toResponseJson = async <T>(response: Response): Promise<T> => response.json() as Promise<T>;
@@ -139,7 +135,7 @@ export function useSettingsController({ isOpen, initialTab }: UseSettingsControl
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferencesState>(() => (
     createDefaultNotificationPreferences()
   ));
-  const [codexPermissionMode, setCodexPermissionMode] = useState<CodexPermissionMode>('default');
+  const [codexPermissionMode, setCodexPermissionMode] = useState<CodexPermissionMode>('plan');
 
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [loginProvider, setLoginProvider] = useState<ActiveLoginProvider>('');
@@ -190,7 +186,7 @@ export function useSettingsController({ isOpen, initialTab }: UseSettingsControl
       setClaudePermissions(createEmptyClaudePermissions());
       setCursorPermissions(createEmptyCursorPermissions());
       setNotificationPreferences(createDefaultNotificationPreferences());
-      setCodexPermissionMode('default');
+      setCodexPermissionMode('plan');
       setProjectSortOrder('name');
     }
   }, []);

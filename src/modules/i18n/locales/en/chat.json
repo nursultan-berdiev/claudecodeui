@@ -89,17 +89,17 @@
     "permissionMode": "Permission Mode",
     "modes": {
       "default": "Default Mode",
-      "auto": "Auto Mode",
+      "auto": "Auto",
       "acceptEdits": "Accept Edits",
       "bypassPermissions": "Bypass Permissions",
-      "plan": "Plan Mode"
+      "plan": "Plan"
     },
     "descriptions": {
       "default": "Only trusted commands (ls, cat, grep, git status, etc.) run automatically. Other commands are skipped. Can write to workspace.",
-      "auto": "A model classifier decides per tool call whether to approve or deny. Hands-off, but safer than Bypass — denials still happen.",
+      "auto": "Reads, commands and file writes run without manual approval. Questions that need your answer remain interactive.",
       "acceptEdits": "All commands run automatically within the workspace. Full auto mode with sandboxed execution.",
       "bypassPermissions": "Full system access with no restrictions. All commands run automatically with full disk and network access. Use with caution.",
-      "plan": "Planning mode - no commands are executed"
+      "plan": "Analyze and prepare a plan. Changes are not executed automatically."
     },
     "technicalDetails": "Technical details"
   },
@@ -144,7 +144,7 @@
     "effortDefault": "Default",
     "loadingModels": "Loading models…",
     "modelMenu": "Select model and reasoning effort",
-    "permissionHeading": "How should {{provider}} actions be approved?",
+    "permissionHeading": "{{provider}} mode",
     "editing": {
       "title": "Replacing an earlier message",
       "filesNotReverted": "files the agent already changed are not reverted",
