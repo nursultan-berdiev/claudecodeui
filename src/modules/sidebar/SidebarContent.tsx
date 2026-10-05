@@ -694,6 +694,7 @@ export default function SidebarContent({
           currentVersion={currentVersion}
           onShowVersionModal={onShowVersionModal}
           onShowSettings={onShowSettings}
+          onNewSession={projectListProps.onNewSession}
           t={t}
         />
       )}

@@ -4,7 +4,7 @@ import { NewChatButton } from '@/modules/company';
 import type { TFunction } from 'i18next';
 
 import { IS_PLATFORM } from '@/shared/utils';
-import type { ReleaseInfo } from '@/shared/types';
+import type { Project, ReleaseInfo } from '@/shared/types';
 
 const GITHUB_REPO_URL = 'https://github.com/siteboon/claudecodeui';
 
@@ -16,6 +16,7 @@ type SidebarFooterProps = {
   currentVersion: string;
   onShowVersionModal: () => void;
   onShowSettings: () => void;
+  onNewSession: (project: Project) => void;
   t: TFunction;
 };
 
@@ -28,6 +29,7 @@ export default function SidebarFooter({
   currentVersion,
   onShowVersionModal,
   onShowSettings,
+  onNewSession,
   t,
 }: SidebarFooterProps) {
   const { user, logout } = useAuth();
@@ -101,7 +103,7 @@ export default function SidebarFooter({
       {/* Chat and skills */}
       <div className="nav-divider" />
       <div className="px-2 py-1">
-        <NewChatButton />
+        <NewChatButton onOpenChat={onNewSession} />
         <a href="/skills" className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm hover:bg-accent"><BookOpen className="h-4 w-4" />{t('company.skillsTitle', { ns: 'settings' })}</a>
       </div>
 

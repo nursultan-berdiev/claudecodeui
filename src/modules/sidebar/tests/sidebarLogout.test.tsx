@@ -17,7 +17,7 @@ test('the expanded sidebar names the signed-in user and logs out', () => {
   logout.mockClear();
   render(
     <SidebarFooter updateAvailable={false} restartRequired={false} releaseInfo={null} latestVersion={null}
-      currentVersion="1.0.0" onShowVersionModal={() => {}} onShowSettings={() => {}} t={t} />,
+      currentVersion="1.0.0" onShowVersionModal={() => {}} onShowSettings={() => {}} onNewSession={() => {}} t={t} />,
   );
   const buttons = screen.getAllByRole('button', { name: 'Logout (claims1)' });
   fireEvent.click(buttons[0]);

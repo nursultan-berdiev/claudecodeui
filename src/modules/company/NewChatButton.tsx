@@ -3,10 +3,11 @@ import { createPortal } from 'react-dom';
 import { MessageSquarePlus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { api, readApiJson } from '@/shared/api';
-import type { Project } from '@/shared/types';
+import { writeSelectedProvider } from '@/shared/selectedProvider';
+import type { LLMProvider, Project } from '@/shared/types';
 
-/** Used by the sidebar to create an owner-only chat even when the user has no selected project. */
-export function NewChatButton() {
+/** Used by the sidebar to open an owner-only chat even when the user has no selected project. */
+export function NewChatButton({ onOpenChat }: { onOpenChat: (project: Project) => void }) {
   const { t } = useTranslation('settings');
   // The modal collects the provider and shared workspace for a fresh private chat.
   const [open, setOpen] = useState(false);
@@ -29,13 +30,19 @@ export function NewChatButton() {
     setPending(true); setError('');
     try {
       const workspace = projectPath || '/workspace/chats';
-      if (!projectPath && !projects.some((project) => project.fullPath === workspace)) {
+      let project = projects.find((item) => item.fullPath === workspace);
+      if (!project) {
         const response = await api.createProject({ path: workspace, customName: t('company.chats') });
         if (response.status !== 409) await readApiJson(response);
+        project = (await readApiJson<Project[]>(await api.projects())).find((item) => item.fullPath === workspace);
       }
-      const result = await readApiJson<{ data: { sessionId: string } }>(await api.providers.createSession({ provider, projectPath: workspace, initialMessage: t('company.newChat') }));
-      window.location.assign(`/session/${encodeURIComponent(result.data.sessionId)}`);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); setPending(false); }
+      if (!project) throw new Error(t('company.chatWorkspaceMissing'));
+      writeSelectedProvider(provider as LLMProvider);
+      // The composer creates the chat on the first message and names it after that message.
+      onOpenChat(project);
+      setOpen(false);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
+    setPending(false);
   };
   return <>
     <button type="button" onClick={() => void start()} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-accent">
