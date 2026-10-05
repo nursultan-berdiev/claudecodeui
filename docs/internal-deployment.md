@@ -83,6 +83,12 @@ docker compose --env-file .env.docker exec cloudcli codex --version
 docker compose --env-file .env.docker exec cloudcli claude --version
 ```
 
+The image sets `ENABLE_CLAUDEAI_MCP_SERVERS=false`. Connectors added to the
+signed-in claude.ai account (Gmail, Google Drive, Calendar and others) would
+otherwise be available to every user's agent runs, so the mailbox and files
+of the account owner would be readable by all staff. Add tools for the team
+as MCP servers in Settings instead.
+
 The initial administrator can sign the CLIs in from Settings → Agents. For a
 headless Codex container, device-code login or a workspace service-account
 access token may be more suitable when available. The provider login belongs

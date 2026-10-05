@@ -31,8 +31,10 @@ COPY --from=build /app/public ./public
 RUN mkdir -p /workspace /home/node/.cloudcli && chown -R node:node /workspace /home/node
 
 # The CLI version is pinned by CLAUDE_CODE_VERSION; the node user cannot write the global npm prefix anyway.
+# claude.ai connectors belong to the signed-in account (mail, drive, calendar); every user of this server would share them.
 ENV NODE_ENV=production \
     DISABLE_AUTOUPDATER=1 \
+    ENABLE_CLAUDEAI_MCP_SERVERS=false \
     HOME=/home/node \
     HOST=0.0.0.0 \
     SERVER_PORT=3001 \
