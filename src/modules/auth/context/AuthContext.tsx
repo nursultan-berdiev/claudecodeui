@@ -46,7 +46,7 @@ type OnboardingStatusPayload = {
 };
 
 type ApiErrorPayload = {
-  error?: string;
+  error?: string | { message?: string };
   message?: string;
 };
 
@@ -80,7 +80,9 @@ function resolveApiErrorMessage(payload: ApiErrorPayload | null, fallback: strin
     return fallback;
   }
 
-  return payload.error ?? payload.message ?? fallback;
+  // Routes that raise AppError answer with `{ error: { code, message } }`.
+  const error = typeof payload.error === 'string' ? payload.error : payload.error?.message;
+  return error || payload.message || fallback;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
