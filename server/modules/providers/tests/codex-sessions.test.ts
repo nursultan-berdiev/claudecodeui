@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { closeConnection, initializeDatabase, sessionsDb } from '@/modules/database/index.js';
+import { closeConnection, getConnection, initializeDatabase, sessionsDb, userDb } from '@/modules/database/index.js';
 import { CodexSessionSynchronizer } from '@/modules/providers/list/codex/codex-session-synchronizer.provider.js';
 import { CodexSessionsProvider, parseCodexExecScript, readCodexMemoryCitations } from '@/modules/providers/list/codex/codex-sessions.provider.js';
+import { withAccessActor } from '@/shared/utils.js';
 
 const patchHomeDir = (nextHomeDir: string) => {
   const original = os.homedir;
@@ -604,6 +606,56 @@ test('Codex history restores user prompts from typed item_completed rows', { con
       assert.equal(users.length, 1, 'the wire user echo must not duplicate the typed prompt');
       assert.equal(users[0]?.content, prompt);
       assert.equal(images?.[0]?.path, '/tmp/prompt-picture.png');
+    });
+  } finally {
+    restoreHomeDir();
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('Codex history shows generated images to the chat audience and publishes nothing outside the image folder', { concurrency: false }, async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'codex-generated-image-'));
+  const workspacePath = path.join(tempRoot, 'workspace');
+  await mkdir(workspacePath, { recursive: true });
+  const restoreHomeDir = patchHomeDir(tempRoot);
+
+  try {
+    const providerSessionId = 'codex-image-1';
+    const imageDir = path.join(tempRoot, '.codex', 'generated_images', 'thread-1');
+    await mkdir(imageDir, { recursive: true });
+    await writeFile(path.join(imageDir, 'exec-cake.png'), 'PNG-BYTES');
+    await writeFile(path.join(tempRoot, 'secret.png'), 'SECRET');
+    await symlink(path.join(tempRoot, 'secret.png'), path.join(imageDir, 'exec-link.png'));
+    const imageItem = (savedPath: string) => JSON.stringify({
+      timestamp: '2026-10-05T02:38:46.000Z',
+      type: 'event_msg',
+      payload: { type: 'item_completed', turn_id: 'turn-1', item: { type: 'Extension', kind: 'image_gen.generation', id: 'exec-x', status: 'completed', savedPath } },
+    });
+    const transcriptPath = path.join(tempRoot, '.codex', 'sessions', '2026', '10', '05', `rollout-${providerSessionId}.jsonl`);
+    await mkdir(path.dirname(transcriptPath), { recursive: true });
+    await writeFile(transcriptPath, [
+      JSON.stringify({ type: 'session_meta', payload: { id: providerSessionId, cwd: workspacePath } }),
+      imageItem(path.join(imageDir, 'exec-cake.png')),
+      imageItem(path.join(tempRoot, 'secret.png')),
+      imageItem(path.join(imageDir, 'exec-link.png')),
+    ].join('\n') + '\n', 'utf8');
+
+    await withIsolatedDatabase(async () => {
+      const owner = Number(userDb.createUser('owner', 'hash', 'member').id);
+      withAccessActor({ id: owner, role: 'member' }, () => sessionsDb.createAppSession('app-image-1', 'codex', workspacePath));
+      sessionsDb.assignProviderSessionId('app-image-1', providerSessionId);
+      await new CodexSessionSynchronizer().synchronize();
+
+      const history = await new CodexSessionsProvider().fetchHistory('app-image-1');
+      const images = history.messages.filter((message) => message.role === 'assistant' && Array.isArray(message.images))
+        .flatMap((message) => message.images as Array<{ path: string }>);
+      const assetName = 'codex-thread-1-exec-cake.png';
+      assert.deepEqual(images.map((image) => path.basename(image.path)), [assetName, 'codex-thread-1-exec-link.png']);
+      assert.equal(await readFile(path.join(tempRoot, '.cloudcli', 'assets', assetName), 'utf8'), 'PNG-BYTES');
+      assert.equal(existsSync(path.join(tempRoot, '.cloudcli', 'assets', 'codex-thread-1-exec-link.png')), false);
+      const db = getConnection();
+      assert.deepEqual(db.prepare('SELECT filename, owner_user_id FROM asset_owners').all(), [{ filename: assetName, owner_user_id: owner }]);
+      assert.deepEqual(db.prepare('SELECT session_id, filename FROM session_assets').all(), [{ session_id: 'app-image-1', filename: assetName }]);
     });
   } finally {
     restoreHomeDir();

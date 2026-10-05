@@ -55,6 +55,15 @@ export const resourceAccessDb = {
     if (actor) getConnection().prepare('INSERT OR REPLACE INTO asset_owners VALUES (?, ?)').run(filename, actor.id);
   },
 
+  /** Used for files a provider produced inside a chat: owned by the chat owner and readable by the chat's audience. */
+  attachSessionAsset(sessionId: string, filename: string, ownerUserId: number | null): void {
+    const db = getConnection();
+    db.transaction(() => {
+      if (ownerUserId !== null) db.prepare('INSERT OR IGNORE INTO asset_owners VALUES (?, ?)').run(filename, ownerUserId);
+      db.prepare('INSERT OR IGNORE INTO session_assets VALUES (?, ?)').run(sessionId, filename);
+    })();
+  },
+
   bindAsset(sessionId: string, filename: string): void {
     if (!this.canReadAsset(filename)) throw new AppError('Attachment not found', { code: 'ASSET_NOT_FOUND', statusCode: 404 });
     getConnection().prepare('INSERT OR IGNORE INTO session_assets VALUES (?, ?)').run(sessionId, filename);

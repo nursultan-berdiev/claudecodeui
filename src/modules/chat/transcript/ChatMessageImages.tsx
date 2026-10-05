@@ -9,6 +9,8 @@ import type { ChatImage } from '@/shared/types';
 type ChatMessageImagesProps = {
   images: ChatImage[];
   projectId?: string | null;
+  /** An agent reply shows its pictures as the answer itself: left-aligned and large. */
+  variant?: 'attachment' | 'reply';
 };
 
 /**
@@ -129,7 +131,13 @@ export function ImageLightbox({ src, alt, onClose }: { src: string; alt: string;
   );
 }
 
-function ChatMessageImage({ image, projectId }: { image: ChatImage; projectId?: string | null }) {
+const IMAGE_SIZES = {
+  attachment: { box: 'h-28 w-28', img: 'h-28 w-28 object-cover' },
+  reply: { box: 'h-64 w-64', img: 'max-h-96 w-auto max-w-full object-contain' },
+};
+
+function ChatMessageImage({ image, projectId, variant }: { image: ChatImage; projectId?: string | null; variant: keyof typeof IMAGE_SIZES }) {
+  const size = IMAGE_SIZES[variant];
   const { t } = useTranslation();
   const { src, failed } = useChatImageSrc(image, projectId);
   const [expanded, setExpanded] = useState(false);
@@ -137,14 +145,14 @@ function ChatMessageImage({ image, projectId }: { image: ChatImage; projectId?: 
 
   if (failed) {
     return (
-      <div className="flex h-28 w-28 items-center justify-center rounded-xl border border-border/50 bg-muted px-2 text-center text-[10px] text-muted-foreground">
+      <div className={`flex ${size.box} items-center justify-center rounded-xl border border-border/50 bg-muted px-2 text-center text-[10px] text-muted-foreground`}>
         {alt}
       </div>
     );
   }
 
   if (!src) {
-    return <div className="h-28 w-28 animate-pulse rounded-xl border border-border/50 bg-muted" />;
+    return <div className={`${size.box} animate-pulse rounded-xl border border-border/50 bg-muted`} />;
   }
 
   return (
@@ -158,7 +166,7 @@ function ChatMessageImage({ image, projectId }: { image: ChatImage; projectId?: 
         <img
           src={src}
           alt={alt}
-          className="h-28 w-28 cursor-zoom-in object-cover transition-transform duration-200 hover:scale-105"
+          className={`${size.img} cursor-zoom-in transition-transform duration-200 hover:scale-105`}
         />
       </button>
       {expanded && <ImageLightbox src={src} alt={alt} onClose={() => setExpanded(false)} />}
@@ -173,15 +181,15 @@ function ChatMessageImage({ image, projectId }: { image: ChatImage; projectId?: 
  *
  * Rendered by chat's MessageComponent for the images attached to a user turn.
  */
-export default function ChatMessageImages({ images, projectId }: ChatMessageImagesProps) {
+export default function ChatMessageImages({ images, projectId, variant = 'attachment' }: ChatMessageImagesProps) {
   if (!images || images.length === 0) {
     return null;
   }
 
   return (
-    <div className="flex flex-wrap justify-end gap-2">
+    <div className={`flex flex-wrap gap-2 ${variant === 'reply' ? 'justify-start' : 'justify-end'}`}>
       {images.map((image, index) => (
-        <ChatMessageImage key={image.path || image.name || index} image={image} projectId={projectId} />
+        <ChatMessageImage key={image.path || image.name || index} image={image} projectId={projectId} variant={variant} />
       ))}
     </div>
   );

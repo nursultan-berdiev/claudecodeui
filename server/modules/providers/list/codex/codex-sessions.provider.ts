@@ -1,11 +1,12 @@
 import fsSync from 'node:fs';
 import fsp from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 
-import { sessionsDb } from '@/modules/database/index.js';
+import { resourceAccessDb, sessionsDb } from '@/modules/database/index.js';
 import { codexAppServer } from '@/modules/providers/list/codex/codex-app-server.client.js';
-import { parseFilesInputTag, toImageAttachments } from '@/shared/image-attachments.js';
+import { getGlobalImageAssetsDir, parseFilesInputTag, toImageAttachments, toPosixPath } from '@/shared/image-attachments.js';
 import type { IProviderSessions } from '@/shared/interfaces.js';
 import { prepareTranscriptMessages } from '@/shared/message-unification.js';
 import type {
@@ -1190,6 +1191,50 @@ const CODEX_COLLABORATION_CONTROL_TOOLS = new Set([
  * Reads one Codex rollout file and produces the compact per-message records
  * `normalizeHistoryEntry` turns into `NormalizedMessage`s.
  */
+type CodexGeneratedImage = { sourcePath: string; assetName: string };
+
+const GENERATED_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif']);
+const codexGeneratedImagesDir = () => path.join(os.homedir(), '.codex', 'generated_images');
+
+/**
+ * Reads a finished `image_gen` item. Codex saves the picture under its own
+ * output folder and expects its UI to show it; only image files inside that
+ * folder qualify, so a forged rollout line cannot publish any other file.
+ */
+export function readCodexGeneratedImage(item: AnyRecord | null): CodexGeneratedImage | null {
+  if (item?.type !== 'Extension' || item.kind !== 'image_gen.generation' || item.status !== 'completed') return null;
+  const savedPath = readNonEmptyString(item.savedPath);
+  if (!savedPath) return null;
+  const root = codexGeneratedImagesDir();
+  const sourcePath = path.resolve(savedPath);
+  if (!sourcePath.startsWith(`${root}${path.sep}`) || !GENERATED_IMAGE_EXTENSIONS.has(path.extname(sourcePath).toLowerCase())) return null;
+  const assetName = `codex-${path.relative(root, sourcePath).split(path.sep).join('-')}`.replace(/[^a-zA-Z0-9._-]/g, '_');
+  return { sourcePath, assetName };
+}
+
+/** Copies generated images into the chat attachment store, so the chat's access rules decide who sees them. */
+async function publishCodexGeneratedImages(sessionId: string, images: CodexGeneratedImage[]): Promise<void> {
+  if (!images.length) return;
+  const root = await fsp.realpath(codexGeneratedImagesDir()).catch(() => null);
+  if (!root) return;
+  const assetsDir = getGlobalImageAssetsDir();
+  await fsp.mkdir(assetsDir, { recursive: true });
+  const ownerUserId = sessionsDb.getSessionById(sessionId)?.owner_user_id ?? resourceAccessDb.defaultOwnerId();
+  for (const image of images) {
+    try {
+      // Resolved again on disk: a symlink placed in the folder must not lead outside it.
+      const source = await fsp.realpath(image.sourcePath);
+      if (!source.startsWith(`${root}${path.sep}`)) continue;
+      await fsp.copyFile(source, path.join(assetsDir, image.assetName), fsSync.constants.COPYFILE_EXCL).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'EEXIST') throw error;
+      });
+      resourceAccessDb.attachSessionAsset(sessionId, image.assetName, ownerUserId);
+    } catch (error) {
+      console.warn('[CodexProvider] Could not publish a generated image:', error instanceof Error ? error.message : String(error));
+    }
+  }
+}
+
 async function getCodexSessionMessages(sessionId: string): Promise<CodexHistoryResult> {
   const sessionFilePath = sessionsDb.getSessionById(sessionId)?.jsonl_path;
 
@@ -1231,6 +1276,7 @@ async function getCodexSessionMessages(sessionId: string): Promise<CodexHistoryR
   const turns = createCodexTurnTracker();
   /** Turns whose prompt already carries the anchor, so only the first does. */
   const anchoredTurnIds = new Set<string>();
+  const generatedImages: CodexGeneratedImage[] = [];
 
   const fileStream = fsSync.createReadStream(sessionFilePath);
   const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
@@ -1371,6 +1417,16 @@ async function getCodexSessionMessages(sessionId: string): Promise<CodexHistoryR
             };
             messages.push(row);
           }
+        }
+        const generated = readCodexGeneratedImage(item);
+        if (generated) {
+          generatedImages.push(generated);
+          messages.push({
+            type: 'assistant',
+            timestamp,
+            message: { role: 'assistant', content: '' },
+            images: [{ path: toPosixPath(path.join(getGlobalImageAssetsDir(), generated.assetName)), name: path.basename(generated.sourcePath) }],
+          });
         }
         continue;
       }
@@ -1791,6 +1847,7 @@ async function getCodexSessionMessages(sessionId: string): Promise<CodexHistoryR
   }
 
   await attachCodexSubagentTranscripts(sessionFilePath, subagentsByCallId);
+  await publishCodexGeneratedImages(sessionId, generatedImages);
 
   // A rollback is recorded after the turns it retires, so a prompt can be
   // anchored and then retired later in the same file. Its rows still render —
@@ -2013,7 +2070,8 @@ export class CodexSessionsProvider implements IProviderSessions {
             .filter(Boolean)
             .join('\n')
           : '';
-      if (!content.trim()) {
+      const images = Array.isArray(raw.images) && raw.images.length > 0 ? raw.images : undefined;
+      if (!content.trim() && !images) {
         return [];
       }
       return [createNormalizedMessage({
@@ -2024,6 +2082,7 @@ export class CodexSessionsProvider implements IProviderSessions {
         kind: 'text',
         role: 'assistant',
         content,
+        images,
         memoryCitations: raw.memoryCitations,
       })];
     }

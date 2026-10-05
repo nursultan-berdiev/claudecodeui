@@ -403,6 +403,11 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
               </div>
             )}
 
+            {/* Pictures the agent generated, e.g. Codex image generation. */}
+            {message.type === 'assistant' && message.images && message.images.length > 0 && (
+              <ChatMessageImages images={message.images} projectId={selectedProject?.projectId} variant="reply" />
+            )}
+
             {/* Outside the branches on purpose: a provider can cite memory on a
                 plain reply or on the plan card it turned that reply into. */}
             {Array.isArray(message.memoryCitations) && message.memoryCitations.length > 0 && (

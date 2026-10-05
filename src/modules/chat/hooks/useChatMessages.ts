@@ -440,6 +440,7 @@ export function normalizedToChatMessages(messages: NormalizedMessage[]): ChatMes
             type: 'assistant',
             content: text,
             timestamp: msg.timestamp,
+            images,
             memoryCitations: msg.memoryCitations,
             ...sharedMetadata,
           });
