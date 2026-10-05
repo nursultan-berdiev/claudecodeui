@@ -8,6 +8,7 @@ import {
   isAllowedImageMimeType,
   openStoredAttachmentAsset,
 } from '@/modules/assets/services/image-assets.service.js';
+import { getAccessActor, withAccessActor } from '@/shared/utils.js';
 
 const router = express.Router();
 
@@ -54,7 +55,9 @@ const attachmentUpload = multer({
  * returns their absolute paths for use in provider prompts and chat history.
  */
 router.post('/images', (req, res) => {
-  upload.array('images', 5)(req, res, (err: unknown) => {
+  // Multer completes from request stream events, outside the authenticated actor context.
+  const actor = getAccessActor();
+  upload.array('images', 5)(req, res, (err: unknown) => withAccessActor(actor, () => {
     if (err) {
       const message = err instanceof Error ? err.message : 'Upload failed';
       return res.status(400).json({ error: message });
@@ -66,7 +69,7 @@ router.post('/images', (req, res) => {
     }
 
     res.json({ images: buildStoredImageRecords(files) });
-  });
+  }));
 });
 
 /**
@@ -75,7 +78,8 @@ router.post('/images', (req, res) => {
  * tools; uploads are capped at 10 files and 10MB per file.
  */
 router.post('/files', (req, res) => {
-  attachmentUpload.array('files', 10)(req, res, (err: unknown) => {
+  const actor = getAccessActor();
+  attachmentUpload.array('files', 10)(req, res, (err: unknown) => withAccessActor(actor, () => {
     if (err) {
       const message = err instanceof Error ? err.message : 'Upload failed';
       return res.status(400).json({ error: message });
@@ -87,7 +91,7 @@ router.post('/files', (req, res) => {
     }
 
     res.json({ attachments: buildStoredAttachmentRecords(files) });
-  });
+  }));
 });
 
 /**
