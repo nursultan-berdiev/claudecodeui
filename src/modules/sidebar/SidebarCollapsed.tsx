@@ -1,5 +1,8 @@
-import { Settings, Sparkles, PanelLeftOpen, AlertTriangle } from 'lucide-react';
+import { Settings, Sparkles, PanelLeftOpen, AlertTriangle, LogOut } from 'lucide-react';
 import type { TFunction } from 'i18next';
+
+import { useAuth } from '@/modules/auth';
+import { IS_PLATFORM } from '@/shared/utils';
 
 type SidebarCollapsedProps = {
   onExpand: () => void;
@@ -19,6 +22,7 @@ export default function SidebarCollapsed({
   onShowVersionModal,
   t,
 }: SidebarCollapsedProps) {
+  const { logout } = useAuth();
   return (
     <div className="flex h-full w-12 flex-col items-center gap-1 bg-background/80 py-3 backdrop-blur-sm">
       {/* Expand button with brand logo */}
@@ -42,6 +46,17 @@ export default function SidebarCollapsed({
       >
         <Settings className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-foreground" />
       </button>
+
+      {!IS_PLATFORM && (
+        <button
+          onClick={logout}
+          className="group flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-accent/80"
+          aria-label={t('common:navigation.logout')}
+          title={t('common:navigation.logout')}
+        >
+          <LogOut className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-foreground" />
+        </button>
+      )}
 
       {/* Restart-required indicator */}
       {restartRequired && (
