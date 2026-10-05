@@ -155,6 +155,7 @@
     "defaultWorkspace": "Shared chat workspace",
     "chats": "Chats",
     "chatWorkspaceMissing": "The chat workspace could not be opened",
+    "noAgentReady": "No agent is signed in. Ask an administrator to sign in to Claude or Codex in Settings → Agents.",
     "create": "Create",
     "departmentsTitle": "Company departments",
     "departmentsDescription": "A user can belong to several departments. Department membership controls shared chat and skill access.",

@@ -6,6 +6,14 @@ import { api, readApiJson } from '@/shared/api';
 import { writeSelectedProvider } from '@/shared/selectedProvider';
 import type { LLMProvider, Project } from '@/shared/types';
 
+const AGENTS = [{ id: 'claude', label: 'Claude Code' }, { id: 'codex', label: 'Codex' }];
+
+async function isSignedIn(agent: string): Promise<boolean> {
+  try {
+    return (await readApiJson<{ data: { authenticated?: boolean } }>(await api.providers.authStatus(agent))).data.authenticated === true;
+  } catch { return false; }
+}
+
 /** Used by the sidebar to open an owner-only chat even when the user has no selected project. */
 export function NewChatButton({ onOpenChat }: { onOpenChat: (project: Project) => void }) {
   const { t } = useTranslation('settings');
@@ -15,6 +23,8 @@ export function NewChatButton({ onOpenChat }: { onOpenChat: (project: Project) =
   const [projects, setProjects] = useState<Project[]>([]);
   // New chats start on the default shared chats workspace unless a project is selected.
   const [projectPath, setProjectPath] = useState('');
+  // Only agents with stored credentials are offered: any other fails on the first message.
+  const [agents, setAgents] = useState<string[]>([]);
   // Provider selection controls the CLI used by the new chat.
   const [provider, setProvider] = useState('claude');
   // Pending and error state describe the creation request.
@@ -23,8 +33,16 @@ export function NewChatButton({ onOpenChat }: { onOpenChat: (project: Project) =
   const [error, setError] = useState('');
   const start = async () => {
     setOpen(true); setError('');
-    try { setProjects(await readApiJson<Project[]>(await api.projects())); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
+    try {
+      const [projectList, signedIn] = await Promise.all([
+        readApiJson<Project[]>(await api.projects()),
+        Promise.all(AGENTS.map((agent) => isSignedIn(agent.id))),
+      ]);
+      const ready = AGENTS.filter((_agent, index) => signedIn[index]).map((agent) => agent.id);
+      setProjects(projectList); setAgents(ready);
+      setProvider((current) => (ready.includes(current) ? current : ready[0] ?? ''));
+      if (!ready.length) setError(t('company.noAgentReady'));
+    } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
   };
   const create = async () => {
     setPending(true); setError('');
@@ -53,7 +71,7 @@ export function NewChatButton({ onOpenChat }: { onOpenChat: (project: Project) =
         <h2 className="font-semibold">{t('company.newChat')}</h2>
         <p className="text-sm text-muted-foreground">{t('company.newChatDescription')}</p>
         <label className="block text-sm">{t('company.provider')}<select aria-label={t('company.provider')} value={provider} onChange={(event) => setProvider(event.target.value)} className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2">
-          <option value="claude">Claude Code</option><option value="codex">Codex</option>
+          {AGENTS.filter((agent) => agents.includes(agent.id)).map((agent) => <option key={agent.id} value={agent.id}>{agent.label}</option>)}
         </select></label>
         <label className="block text-sm">{t('company.project')}<select aria-label={t('company.project')} value={projectPath} onChange={(event) => setProjectPath(event.target.value)} className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2">
           <option value="">{t('company.defaultWorkspace')}</option>
@@ -61,7 +79,7 @@ export function NewChatButton({ onOpenChat }: { onOpenChat: (project: Project) =
         </select></label>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <div className="flex justify-end gap-2"><button className="rounded-md border border-border px-3 py-2 text-sm" onClick={() => setOpen(false)}>{t('company.cancel')}</button>
-          <button disabled={pending} className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50" onClick={() => void create()}>{t('company.create')}</button></div>
+          <button disabled={pending || !provider} className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50" onClick={() => void create()}>{t('company.create')}</button></div>
       </section>
     </div>, document.body)}
   </>;
