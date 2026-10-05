@@ -292,17 +292,15 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
     return Boolean(FALLBACK_PROVIDER_EFFORT_VALUES[targetProvider]?.length);
   }, [providerCapabilities]);
 
-  const pickStoredOrCurrent = (
+  // Without a stored choice the server's default wins: the static fallback only
+  // covers first paint and goes stale as providers retire models.
+  const pickStoredOrDefault = (
     storageKey: string,
-    current: string,
     def: ProviderModelsDefinition,
   ): string => {
     const stored = localStorage.getItem(storageKey);
     if (stored && def.OPTIONS.some((o) => o.value === stored)) {
       return stored;
-    }
-    if (current && def.OPTIONS.some((o) => o.value === current)) {
-      return current;
     }
     return def.DEFAULT;
   };
@@ -376,7 +374,7 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
 
       const storageKey = providerModelStorageKey(targetProvider);
       const currentModel = providerModels[targetProvider];
-      const nextModel = pickStoredOrCurrent(storageKey, currentModel, catalog);
+      const nextModel = pickStoredOrDefault(storageKey, catalog);
 
       if (nextModel !== currentModel) {
         reconciledModels[targetProvider] = nextModel;

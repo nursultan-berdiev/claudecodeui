@@ -145,10 +145,51 @@ export const CODEX_PREDEFINED_MODELS: ProviderModelsDefinition = {
 
 const CODEX_CONFIG_PATH = path.join(os.homedir(), '.codex', 'config.toml');
 
+type CachedCodexModel = {
+  slug?: unknown;
+  display_name?: unknown;
+  description?: unknown;
+  visibility?: unknown;
+  priority?: unknown;
+  default_reasoning_level?: unknown;
+  supported_reasoning_levels?: { effort?: unknown }[];
+};
+
+/**
+ * The Codex CLI caches the model list OpenAI serves to the signed-in account.
+ * A ChatGPT sign-in does not accept every API model, so that list, not the
+ * curated catalog, decides what can be offered once the CLI has fetched it.
+ */
+export async function readCodexAccountModels(cachePath = path.join(os.homedir(), '.codex', 'models_cache.json')): Promise<ProviderModelsDefinition | null> {
+  try {
+    const cache = JSON.parse(await readFile(cachePath, 'utf8')) as { models?: CachedCodexModel[] };
+    const options = (Array.isArray(cache.models) ? cache.models : [])
+      .filter((model) => model.visibility === 'list' && typeof model.slug === 'string')
+      .sort((left, right) => Number(left.priority ?? 0) - Number(right.priority ?? 0))
+      .map((model) => {
+        const levels = (model.supported_reasoning_levels ?? []).map((level) => level.effort).filter((effort): effort is string => typeof effort === 'string');
+        return {
+          value: model.slug as string,
+          label: typeof model.display_name === 'string' ? model.display_name : model.slug as string,
+          description: typeof model.description === 'string' ? model.description : '',
+          ...(levels.length ? { effort: {
+            default: typeof model.default_reasoning_level === 'string' ? model.default_reasoning_level : levels[0],
+            values: levels.map((value) => ({ value })),
+          } } : {}),
+        };
+      });
+    if (!options.length) return null;
+    const curatedDefault = options.some((option) => option.value === CODEX_PREDEFINED_MODELS.DEFAULT);
+    return { OPTIONS: options, DEFAULT: curatedDefault ? CODEX_PREDEFINED_MODELS.DEFAULT : options[0].value };
+  } catch {
+    return null;
+  }
+}
+
 /** Provider registry model adapter for Codex predefined models and active config. */
 export class CodexProviderModels implements IProviderModels {
   async getSupportedModels(): Promise<ProviderModelsDefinition> {
-    return CODEX_PREDEFINED_MODELS;
+    return await readCodexAccountModels() ?? CODEX_PREDEFINED_MODELS;
   }
 
   async getCurrentActiveModel(): Promise<ProviderCurrentActiveModel> {
