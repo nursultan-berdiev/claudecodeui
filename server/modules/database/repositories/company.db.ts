@@ -36,7 +36,8 @@ export const companyDb = {
     return getConnection().prepare('SELECT * FROM managed_skills WHERE id = ?').get(id) as SkillRow ?? null;
   },
   hasImportedSource(source: string): boolean {
-    return Boolean(getConnection().prepare('SELECT 1 FROM managed_skills WHERE source_path = ?').get(source));
+    return Boolean(getConnection().prepare(`SELECT 1 FROM managed_skills WHERE source_path = ?
+      UNION ALL SELECT 1 FROM dismissed_skill_sources WHERE source_path = ?`).get(source, source));
   },
   skillNameTaken(ownerId: number, name: string, provider: string, exceptId: string): boolean {
     return Boolean(getConnection().prepare('SELECT 1 FROM managed_skills WHERE owner_user_id = ? AND name = ? AND provider = ? AND id <> ?').get(ownerId, name, provider, exceptId));
@@ -75,6 +76,11 @@ export const companyDb = {
     })();
   },
   deleteSkill(id: string): void {
-    getConnection().prepare('DELETE FROM managed_skills WHERE id = ?').run(id);
+    const db = getConnection();
+    db.transaction(() => {
+      db.prepare(`INSERT OR IGNORE INTO dismissed_skill_sources (source_path)
+        SELECT source_path FROM managed_skills WHERE id = ? AND source_path IS NOT NULL`).run(id);
+      db.prepare('DELETE FROM managed_skills WHERE id = ?').run(id);
+    })();
   },
 };

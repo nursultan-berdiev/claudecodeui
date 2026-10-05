@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -173,6 +173,25 @@ test('skill access controls reading, editing, supporting paths and shared-chat r
       });
     });
   } finally { for (const directory of exports) await rm(directory, { recursive: true, force: true }); }
+});
+
+test('a deleted imported skill is not imported again by later discovery', async () => {
+  await fixture(async ([admin], workspace) => {
+    const sourcePath = path.join(workspace, 'skills', 'imported-helper', 'SKILL.md');
+    await mkdir(path.dirname(sourcePath), { recursive: true });
+    await writeFile(sourcePath, '---\nname: imported-helper\ndescription: Imported from disk\n---\nBody');
+    const discovered = [{ provider: 'claude' as const, name: 'imported-helper', description: 'Imported from disk', command: '/imported-helper', scope: 'user' as const, sourcePath }];
+    await withAccessActor(admin, async () => {
+      await companySkillsService.importDiscovered('claude', discovered);
+      const [skill] = companySkillsService.list();
+      assert.equal(skill?.name, 'imported-helper');
+      companySkillsService.remove(skill.id);
+      await companySkillsService.importDiscovered('claude', discovered);
+      assert.equal(companySkillsService.list().length, 0);
+      await companySkillsService.importDiscovered('opencode', discovered);
+      assert.equal(companySkillsService.list().length, 1);
+    });
+  });
 });
 
 test('attachments follow their owner and shared chat grants', async () => {

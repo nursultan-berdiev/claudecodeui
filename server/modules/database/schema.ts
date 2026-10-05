@@ -209,6 +209,11 @@ CREATE TABLE IF NOT EXISTS managed_skills (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+-- Sources of deleted imported skills; discovery must not import them again.
+CREATE TABLE IF NOT EXISTS dismissed_skill_sources (
+  source_path TEXT PRIMARY KEY,
+  dismissed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS skill_department_shares (
   skill_id TEXT NOT NULL REFERENCES managed_skills(id) ON DELETE CASCADE,
   department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
