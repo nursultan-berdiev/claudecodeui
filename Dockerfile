@@ -30,7 +30,9 @@ COPY --from=build /app/public ./public
 
 RUN mkdir -p /workspace /home/node/.cloudcli && chown -R node:node /workspace /home/node
 
+# The CLI version is pinned by CLAUDE_CODE_VERSION; the node user cannot write the global npm prefix anyway.
 ENV NODE_ENV=production \
+    DISABLE_AUTOUPDATER=1 \
     HOME=/home/node \
     HOST=0.0.0.0 \
     SERVER_PORT=3001 \
