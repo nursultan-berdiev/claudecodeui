@@ -22,6 +22,8 @@ export function isWorkspaceTabVisible(tab: AppTab, preferences: UiPreferences, i
  * Read it to hide or gate features that only exist in one of the two deployments.
  */
 export const IS_PLATFORM = import.meta.env?.VITE_IS_PLATFORM === 'true';
+// Set by the Docker image build: the browser never shares a host with the CLIs it signs in.
+export const IS_CONTAINER_DEPLOYMENT = import.meta.env?.VITE_CLOUDCLI_CONTAINER_DEPLOYMENT === 'true';
 
 // ---------------------------
 

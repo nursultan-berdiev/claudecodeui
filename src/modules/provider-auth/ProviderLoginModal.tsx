@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 
 import { StandaloneShell } from '@/modules/standalone-shell';
-import { IS_PLATFORM } from '@/shared/utils';
+import { IS_CONTAINER_DEPLOYMENT, IS_PLATFORM } from '@/shared/utils';
 import type { LLMProvider } from '@/shared/types';
 
 /**
@@ -52,7 +52,8 @@ const getProviderCommand = ({
   }
 
   if (provider === 'codex') {
-    return IS_PLATFORM ? 'codex login --device-auth' : 'codex login';
+    // The browser flow redirects to localhost:1455 on the viewer's machine, which only works beside the CLI.
+    return IS_PLATFORM || IS_CONTAINER_DEPLOYMENT ? 'codex login --device-auth' : 'codex login';
   }
 
   if (provider === 'opencode') {

@@ -9,7 +9,7 @@ COPY package.json package-lock.json ./
 COPY scripts/fix-node-pty.js ./scripts/fix-node-pty.js
 RUN HUSKY=0 npm ci --no-audit --no-fund
 COPY . .
-RUN npm run build && npm prune --omit=dev --no-audit --no-fund
+RUN VITE_CLOUDCLI_CONTAINER_DEPLOYMENT=true npm run build && npm prune --omit=dev --no-audit --no-fund
 
 FROM node:22-bookworm-slim
 
