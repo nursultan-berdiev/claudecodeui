@@ -91,6 +91,10 @@ export async function dispatchQueuedMessages(runtime: ProviderRuntimeGateway): P
     if (chatRunRegistry.isProcessing(candidate.sessionId)) {
       return;
     }
+    // Left queued: it goes out once its owner replaces the temporary password.
+    if (userDb.getUserById(Number(candidate.userId))?.must_change_password) {
+      return;
+    }
     if (!sessionDraftsDb.claimQueuedMessage(candidate)) {
       return;
     }
@@ -109,6 +113,7 @@ async function sendClaimedMessage(
   try {
     const actor = userDb.getUserById(Number(row.user_id));
     if (!actor) throw new Error('User is disabled or removed');
+    if (actor.must_change_password) throw new Error('User has to replace a temporary password first');
     const result = await withAccessActor({ id: Number(actor.id), role: actor.role }, () => runDetachedChatTurn(
       {
         sessionId: row.session_id,

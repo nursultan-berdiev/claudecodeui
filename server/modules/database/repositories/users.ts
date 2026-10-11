@@ -21,9 +21,10 @@ type UserRow = {
   git_name: string | null;
   git_email: string | null;
   has_completed_onboarding: number;
+  must_change_password: number;
 };
 
-type UserPublicRow = Pick<UserRow, 'id' | 'username' | 'role' | 'identity_provider' | 'is_active' | 'auth_version' | 'created_at' | 'last_login'>;
+type UserPublicRow = Pick<UserRow, 'id' | 'username' | 'role' | 'identity_provider' | 'is_active' | 'auth_version' | 'created_at' | 'last_login' | 'must_change_password'>;
 
 type UserGitConfig = {
   git_name: string | null;
@@ -89,7 +90,7 @@ export const userDb = {
     const db = getConnection();
     return db
       .prepare(
-        'SELECT id, username, role, identity_provider, is_active, auth_version, created_at, last_login FROM users WHERE id = ? AND is_active = 1'
+        'SELECT id, username, role, identity_provider, is_active, auth_version, created_at, last_login, must_change_password FROM users WHERE id = ? AND is_active = 1'
       )
       .get(userId) as UserPublicRow | undefined;
   },
@@ -97,14 +98,14 @@ export const userDb = {
   /** Lists accounts for administration without exposing password hashes. */
   listUsers(): UserPublicRow[] {
     return getConnection()
-      .prepare('SELECT id, username, role, identity_provider, is_active, auth_version, created_at, last_login FROM users ORDER BY id')
+      .prepare('SELECT id, username, role, identity_provider, is_active, auth_version, created_at, last_login, must_change_password FROM users ORDER BY id')
       .all() as UserPublicRow[];
   },
 
   /** Reads an account including a disabled one for admin updates. */
   getUserByIdIncludingInactive(userId: number): UserPublicRow | undefined {
     return getConnection()
-      .prepare('SELECT id, username, role, identity_provider, is_active, auth_version, created_at, last_login FROM users WHERE id = ?')
+      .prepare('SELECT id, username, role, identity_provider, is_active, auth_version, created_at, last_login, must_change_password FROM users WHERE id = ?')
       .get(userId) as UserPublicRow | undefined;
   },
 
@@ -126,9 +127,20 @@ export const userDb = {
     getConnection().prepare('UPDATE users SET is_active = ?, auth_version = auth_version + 1 WHERE id = ?').run(isActive ? 1 : 0, userId);
   },
 
-  /** Replaces a local password hash after an administrative reset. */
-  setPasswordHash(userId: number, passwordHash: string): void {
-    getConnection().prepare('UPDATE users SET password_hash = ?, auth_version = auth_version + 1 WHERE id = ?').run(passwordHash, userId);
+  /**
+   * Replaces a local password hash and signs the account out of every existing session.
+   * With `expectedAuthVersion`, nothing is written unless the account is still at that version.
+   */
+  setPasswordHash(userId: number, passwordHash: string, mustChangePassword: boolean, expectedAuthVersion?: number): boolean {
+    const db = getConnection();
+    const result = expectedAuthVersion === undefined
+      ? db
+        .prepare('UPDATE users SET password_hash = ?, must_change_password = ?, auth_version = auth_version + 1 WHERE id = ?')
+        .run(passwordHash, mustChangePassword ? 1 : 0, userId)
+      : db
+        .prepare('UPDATE users SET password_hash = ?, must_change_password = ?, auth_version = auth_version + 1 WHERE id = ? AND auth_version = ?')
+        .run(passwordHash, mustChangePassword ? 1 : 0, userId, expectedAuthVersion);
+    return result.changes > 0;
   },
 
   /** Returns the first active user. Used for single-user mode lookups. */
@@ -136,7 +148,7 @@ export const userDb = {
     const db = getConnection();
     return db
       .prepare(
-        'SELECT id, username, role, identity_provider, is_active, auth_version, created_at, last_login FROM users WHERE is_active = 1 LIMIT 1'
+        'SELECT id, username, role, identity_provider, is_active, auth_version, created_at, last_login, must_change_password FROM users WHERE is_active = 1 LIMIT 1'
       )
       .get() as UserPublicRow | undefined;
   },

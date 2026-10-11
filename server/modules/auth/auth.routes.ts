@@ -48,6 +48,17 @@ export function createAuthRouter(
     res.json(service.getCurrentUser((req as AuthenticatedRequest).user));
   });
 
+  router.post('/password', authenticateToken, async (req, res, next) => {
+    try {
+      const body = requestBody(req.body);
+      res.json(await service.changeOwnPassword(
+        (req as AuthenticatedRequest).user, body.currentPassword, body.newPassword,
+      ));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post('/refresh', authenticateToken, (req, res) => {
     res.json(service.refreshSession((req as AuthenticatedRequest).user));
   });
@@ -96,7 +107,7 @@ export function createAuthRouter(
     try {
       const body = requestBody(req.body);
       res.json(await service.resetManagedPassword(
-        (req as AuthenticatedRequest).user, req.params.id, body.password,
+        (req as AuthenticatedRequest).user, req.params.id, body.password, body.requireChange,
       ));
     } catch (error) {
       next(error);

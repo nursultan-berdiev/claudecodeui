@@ -15,7 +15,9 @@
     "username": "Username",
     "email": "Email",
     "profile": "Profile",
-    "changePassword": "Change Password"
+    "changePassword": "Change Password",
+    "passwordTitle": "Password",
+    "passwordDescription": "Change the password you use to sign in."
   },
   "mcp": {
     "title": "MCP Servers",
@@ -135,7 +137,8 @@
     "plugins": "Plugins",
     "users": "Users",
     "departments": "Departments",
-    "about": "About"
+    "about": "About",
+    "account": "Account"
   },
   "company": {
     "access": "Access",
@@ -203,7 +206,9 @@
     "created": "User created",
     "updated": "User updated",
     "passwordUpdated": "Password updated",
-    "auditTitle": "Recent activity"
+    "auditTitle": "Recent activity",
+    "requireChange": "Require a password change at next sign-in",
+    "mustChange": "Must change password"
   },
   "notifications": {
     "title": "Notifications",

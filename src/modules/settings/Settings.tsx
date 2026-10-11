@@ -3,9 +3,10 @@ import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { ProviderLoginModal } from '@/modules/provider-auth';
-import { useAuth, UsersAdminPanel } from '@/modules/auth';
+import { ChangePasswordForm, useAuth, UsersAdminPanel } from '@/modules/auth';
 import { DepartmentsPanel } from '@/modules/company';
 import { Button } from '@/shared/ui';
+import { IS_PLATFORM } from '@/shared/utils';
 import SettingsSidebar from '@/modules/settings/SettingsSidebar';
 import AgentsSettingsTab from '@/modules/settings/tabs/agents-settings/AgentsSettingsTab';
 import AppearanceSettingsTab from '@/modules/settings/tabs/AppearanceSettingsTab';
@@ -74,7 +75,9 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
   });
   const visibleTab = activeTab === 'git'
     ? 'appearance'
-    : !isAdmin && ['users', 'plugins', 'departments'].includes(activeTab) ? 'agents' : activeTab;
+    : (!isAdmin && ['users', 'plugins', 'departments'].includes(activeTab)) || (IS_PLATFORM && activeTab === 'account')
+      ? 'agents'
+      : activeTab;
 
   const {
     permission: pushPermission,
@@ -272,6 +275,8 @@ function Settings({ isOpen, onClose, projects = [], initialTab = 'agents' }: Set
                   onDisableDesktopNotifications={handleDisableDesktopNotifications}
                 />
               )}
+
+              {visibleTab === 'account' && <ChangePasswordForm variant="settings" />}
 
               {visibleTab === 'api' && <CredentialsSettingsTab />}
 

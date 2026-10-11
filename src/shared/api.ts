@@ -41,7 +41,8 @@ export const authenticatedFetch = (
     if (refreshedToken) {
       storeAuthToken(refreshedToken);
     }
-    if (response.headers.get('X-Auth-Error')) {
+    // A request still carrying a token that has since been replaced must not end the newer session.
+    if (response.headers.get('X-Auth-Error') && getStoredAuthToken() === token) {
       expireAuthSession();
     }
     return response;
@@ -190,8 +191,10 @@ export const api = {
       post('/api/auth/users', { username, password, role }),
     updateUser: (id: number, changes: { role?: 'admin' | 'member'; isActive?: boolean }) =>
       patch(`/api/auth/users/${id}`, changes),
-    resetUserPassword: (id: number, password: string) =>
-      post(`/api/auth/users/${id}/password`, { password }),
+    resetUserPassword: (id: number, password: string, requireChange: boolean) =>
+      post(`/api/auth/users/${id}/password`, { password, requireChange }),
+    changePassword: (currentPassword: string, newPassword: string) =>
+      post('/api/auth/password', { currentPassword, newPassword }),
   },
 
   // Protected endpoints

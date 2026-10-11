@@ -5,6 +5,8 @@ type AuthUser = {
   username: string;
   role: 'admin' | 'member';
   auth_version?: number;
+  must_change_password?: number;
+  identity_provider?: string;
 };
 
 type ManagedUser = AuthUser & {
@@ -23,7 +25,7 @@ type AuthDependencies = {
     countActiveAdmins(): number;
     setRole(userId: number, role: 'admin' | 'member'): void;
     setActive(userId: number, isActive: boolean): void;
-    setPasswordHash(userId: number, passwordHash: string): void;
+    setPasswordHash(userId: number, passwordHash: string, mustChangePassword: boolean, expectedAuthVersion?: number): boolean;
     updateLastLogin(userId: number): void;
   };
   identityProvider: {
@@ -83,9 +85,36 @@ function readUserId(value: unknown): number {
   return id;
 }
 
+const MIN_PASSWORD_LENGTH = 8;
+
+function requirePasswordLength(password: string): void {
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    throw new AppError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`, {
+      code: 'AUTH_CREDENTIALS_TOO_SHORT', statusCode: 400,
+    });
+  }
+}
+
+function readSessionUser(user: unknown): AuthUser {
+  if (
+    typeof user !== 'object'
+    || user === null
+    || !('id' in user)
+    || !('username' in user)
+    || (typeof user.id !== 'number' && typeof user.id !== 'bigint')
+    || typeof user.username !== 'string'
+  ) {
+    throw new AppError('Authenticated user is required', {
+      code: 'AUTH_USER_REQUIRED',
+      statusCode: 401,
+    });
+  }
+  return user as AuthUser;
+}
+
 function validateLocalCredentials(username: string, password: string): void {
-  if (username.length < 3 || password.length < 8) {
-    throw new AppError('Username must be at least 3 characters and password at least 8 characters', {
+  if (username.length < 3 || password.length < MIN_PASSWORD_LENGTH) {
+    throw new AppError(`Username must be at least 3 characters and password at least ${MIN_PASSWORD_LENGTH} characters`, {
       code: 'AUTH_CREDENTIALS_TOO_SHORT',
       statusCode: 400,
     });
@@ -173,7 +202,12 @@ export function createAuthService(dependencies: AuthDependencies) {
       dependencies.audit.record(numericUserId(user.id), 'account.login', null, 200);
       return {
         success: true,
-        user: { id: user.id, username: user.username, role: user.role },
+        user: {
+          id: user.id,
+          username: user.username,
+          role: user.role,
+          must_change_password: user.must_change_password ? 1 : 0,
+        },
         token: dependencies.generateToken(user),
       };
     },
@@ -250,13 +284,15 @@ export function createAuthService(dependencies: AuthDependencies) {
       }
     },
 
-    async resetManagedPassword(actor: unknown, userIdInput: unknown, passwordInput: unknown) {
+    async resetManagedPassword(actor: unknown, userIdInput: unknown, passwordInput: unknown, requireChangeInput?: unknown) {
       requireAdmin(actor);
       const userId = readUserId(userIdInput);
       const password = typeof passwordInput === 'string' ? passwordInput : '';
-      if (password.length < 8) {
-        throw new AppError('Password must be at least 8 characters', {
-          code: 'AUTH_CREDENTIALS_TOO_SHORT', statusCode: 400,
+      requirePasswordLength(password);
+      const requireChange = requireChangeInput === undefined ? true : requireChangeInput;
+      if (typeof requireChange !== 'boolean') {
+        throw new AppError('requireChange must be a boolean', {
+          code: 'AUTH_INVALID_REQUIRE_CHANGE', statusCode: 400,
         });
       }
       const target = dependencies.users.getUserByIdIncludingInactive(userId);
@@ -269,8 +305,53 @@ export function createAuthService(dependencies: AuthDependencies) {
         });
       }
       const passwordHash = await dependencies.hashPassword(password);
-      dependencies.users.setPasswordHash(userId, passwordHash);
-      return { success: true };
+      dependencies.users.setPasswordHash(userId, passwordHash, requireChange);
+      return { success: true, mustChangePassword: requireChange };
+    },
+
+    async changeOwnPassword(actor: unknown, currentPasswordInput: unknown, newPasswordInput: unknown) {
+      const user = readSessionUser(actor);
+      const currentPassword = typeof currentPasswordInput === 'string' ? currentPasswordInput : '';
+      const newPassword = typeof newPasswordInput === 'string' ? newPasswordInput : '';
+      if (!currentPassword || !newPassword) {
+        throw new AppError('Current and new password are required', {
+          code: 'AUTH_CREDENTIALS_REQUIRED', statusCode: 400,
+        });
+      }
+      requirePasswordLength(newPassword);
+      if (newPassword === currentPassword) {
+        throw new AppError('New password must differ from the current one', {
+          code: 'AUTH_PASSWORD_UNCHANGED', statusCode: 400,
+        });
+      }
+      if (user.identity_provider !== undefined && user.identity_provider !== 'local') {
+        throw new AppError('Password is managed by the identity provider', {
+          code: 'AUTH_EXTERNAL_PASSWORD', statusCode: 400,
+        });
+      }
+      const verified = await dependencies.identityProvider.authenticate(user.username, currentPassword);
+      if (!verified || Number(verified.id) !== numericUserId(user.id)) {
+        throw new AppError('Current password is incorrect', {
+          code: 'AUTH_INVALID_CURRENT_PASSWORD', statusCode: 400,
+        });
+      }
+
+      const passwordHash = await dependencies.hashPassword(newPassword);
+      // The session's version pins the write, so an administrator reset during the bcrypt awaits is not overwritten.
+      if (!dependencies.users.setPasswordHash(numericUserId(user.id), passwordHash, false, user.auth_version)) {
+        throw new AppError('The account changed while the password was being updated', {
+          code: 'AUTH_SESSION_CHANGED', statusCode: 409,
+        });
+      }
+      const updated = dependencies.users.getUserByIdIncludingInactive(numericUserId(user.id));
+      if (!updated) {
+        throw new AppError('User not found', { code: 'AUTH_USER_NOT_FOUND', statusCode: 404 });
+      }
+      return {
+        success: true,
+        user: { id: updated.id, username: updated.username, role: updated.role, must_change_password: 0 },
+        token: dependencies.generateToken(updated),
+      };
     },
 
     getCurrentUser(user: unknown) {
@@ -278,21 +359,7 @@ export function createAuthService(dependencies: AuthDependencies) {
     },
 
     refreshSession(user: unknown) {
-      if (
-        typeof user !== 'object'
-        || user === null
-        || !('id' in user)
-        || !('username' in user)
-        || (typeof user.id !== 'number' && typeof user.id !== 'bigint')
-        || typeof user.username !== 'string'
-      ) {
-        throw new AppError('Authenticated user is required', {
-          code: 'AUTH_USER_REQUIRED',
-          statusCode: 401,
-        });
-      }
-
-      return { token: dependencies.generateToken(user as AuthUser) };
+      return { token: dependencies.generateToken(readSessionUser(user)) };
     },
 
     logout() {

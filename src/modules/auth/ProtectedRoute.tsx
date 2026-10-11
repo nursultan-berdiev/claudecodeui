@@ -4,6 +4,7 @@ import { IS_PLATFORM } from '@/shared/utils';
 import { useAuth } from '@/modules/auth/context/AuthContext';
 import { Onboarding } from '@/modules/onboarding';
 import AuthLoadingScreen from '@/modules/auth/AuthLoadingScreen';
+import ChangePasswordForm from '@/modules/auth/ChangePasswordForm';
 import LoginForm from '@/modules/auth/LoginForm';
 import SetupForm from '@/modules/auth/SetupForm';
 
@@ -11,9 +12,9 @@ type ProtectedRouteProps = {
   children: ReactNode;
 };
 
-/** Used by App to gate the routed application behind setup, login and onboarding. */
+/** Used by App to gate the routed application behind setup, login, a pending password change and onboarding. */
 export default function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, isLoading, needsSetup, hasCompletedOnboarding, refreshOnboardingStatus } = useAuth();
+  const { user, isLoading, needsSetup, hasCompletedOnboarding, mustChangePassword, refreshOnboardingStatus } = useAuth();
 
   if (isLoading) {
     return <AuthLoadingScreen />;
@@ -29,6 +30,10 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   if (needsSetup) {
     return <SetupForm />;
+  }
+
+  if (mustChangePassword) {
+    return <ChangePasswordForm variant="screen" />;
   }
 
   if (!user) {

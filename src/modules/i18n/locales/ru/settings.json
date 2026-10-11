@@ -14,7 +14,9 @@
     "username": "Имя пользователя",
     "email": "Email",
     "profile": "Профиль",
-    "changePassword": "Изменить пароль"
+    "changePassword": "Изменить пароль",
+    "passwordTitle": "Пароль",
+    "passwordDescription": "Смените пароль, которым входите в систему."
   },
   "mcp": {
     "title": "MCP серверы",
@@ -116,7 +118,8 @@
     "plugins": "Плагины",
     "users": "Пользователи",
     "departments": "Отделы",
-    "about": "О программе"
+    "about": "О программе",
+    "account": "Аккаунт"
   },
   "company": {
     "access": "Доступ",
@@ -184,7 +187,9 @@
     "created": "Пользователь создан",
     "updated": "Пользователь обновлён",
     "passwordUpdated": "Пароль обновлён",
-    "auditTitle": "Последние действия"
+    "auditTitle": "Последние действия",
+    "requireChange": "Потребовать смену пароля при следующем входе",
+    "mustChange": "Должен сменить пароль"
   },
   "notifications": {
     "title": "Уведомления",

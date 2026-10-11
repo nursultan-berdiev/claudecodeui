@@ -511,6 +511,7 @@ export const runMigrations = (db: Database) => {
       'BOOLEAN DEFAULT 0'
     );
     db.exec("UPDATE users SET has_completed_onboarding = 1 WHERE role = 'member'");
+    addColumnToTableIfNotExists(db, 'users', userColumnNames, 'must_change_password', 'BOOLEAN NOT NULL DEFAULT 0');
 
     db.exec(APP_CONFIG_TABLE_SCHEMA_SQL);
     db.exec(USER_NOTIFICATION_PREFERENCES_TABLE_SCHEMA_SQL);

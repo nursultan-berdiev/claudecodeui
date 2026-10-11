@@ -27,7 +27,8 @@ const authService = createAuthService({
     countActiveAdmins: () => userDb.countActiveAdmins(),
     setRole: (userId, role) => userDb.setRole(userId, role),
     setActive: (userId, isActive) => userDb.setActive(userId, isActive),
-    setPasswordHash: (userId, passwordHash) => userDb.setPasswordHash(userId, passwordHash),
+    setPasswordHash: (userId, passwordHash, mustChangePassword, expectedAuthVersion) =>
+      userDb.setPasswordHash(userId, passwordHash, mustChangePassword, expectedAuthVersion),
     updateLastLogin: (userId) => userDb.updateLastLogin(userId),
   },
   identityProvider: createLocalIdentityProvider({

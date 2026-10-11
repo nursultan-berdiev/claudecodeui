@@ -1372,7 +1372,7 @@ export type AgentContext = {
 };
 
 /** Identifier of a top-level section in the settings dialog; use it whenever a tab is stored, compared or requested so deep links, the sidebar and the command palette all agree on the same set of names. */
-export type SettingsMainTab = 'agents' | 'appearance' | 'git' | 'api' | 'voice' | 'tasks' | 'browser' | 'notifications' | 'plugins' | 'users' | 'departments' | 'about';
+export type SettingsMainTab = 'agents' | 'appearance' | 'account' | 'git' | 'api' | 'voice' | 'tasks' | 'browser' | 'notifications' | 'plugins' | 'users' | 'departments' | 'about';
 
 //----------------- COMPANY SHARING ------------
 /** User-controlled visibility for a chat or skill. */
