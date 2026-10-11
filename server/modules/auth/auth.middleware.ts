@@ -5,6 +5,8 @@ import { IS_PLATFORM, withAccessActor } from '@/shared/utils.js';
 
 import { userDb, appConfigDb, authAuditDb } from '../database/index.js';
 
+import { isAllowedBeforePasswordChange, mustChangePassword } from './password-change-gate.js';
+
 // Use env var if set, otherwise auto-generate a unique secret per installation
 const JWT_SECRET = process.env.JWT_SECRET || appConfigDb.getOrCreateJwtSecret();
 
@@ -69,6 +71,14 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
+    const actionPath = req.originalUrl.split('?')[0];
+    if (mustChangePassword(user) && !isAllowedBeforePasswordChange(actionPath)) {
+      return res.status(403).json({
+        error: 'Password change required',
+        code: 'AUTH_PASSWORD_CHANGE_REQUIRED',
+      });
+    }
+
     // Auto-refresh: if token is past halfway through its lifetime, issue a new one
     if (decoded.exp && decoded.iat) {
       const now = Math.floor(Date.now() / 1000);
@@ -80,7 +90,6 @@ const authenticateToken = async (req, res, next) => {
     }
 
     req.user = user;
-    const actionPath = req.originalUrl.split('?')[0];
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && actionPath !== '/api/auth/refresh') {
       res.once('finish', () => {
         try {
@@ -150,7 +159,7 @@ const authenticateWebSocket = (token) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     // Verify user actually exists in database (matches REST authenticateToken behavior)
     const user = userDb.getUserById(decoded.userId);
-    if (!user || user.auth_version !== (decoded.authVersion ?? 0)) {
+    if (!user || user.auth_version !== (decoded.authVersion ?? 0) || mustChangePassword(user)) {
       return null;
     }
     return { userId: user.id, username: user.username, role: user.role, authVersion: user.auth_version };

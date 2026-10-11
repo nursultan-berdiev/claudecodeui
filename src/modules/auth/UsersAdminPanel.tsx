@@ -11,6 +11,7 @@ type ManagedAccount = {
   identity_provider: string;
   is_active: number;
   last_login: string | null;
+  must_change_password: number;
 };
 
 type AccountsResponse = { users: ManagedAccount[] };
@@ -34,7 +35,7 @@ export function UsersAdminPanel() {
   // The form collects credentials for a new local account only.
   const [form, setForm] = useState<AccountForm>({ username: '', password: '', role: 'member' });
   // A reset password is kept only while the administrator edits that account.
-  const [reset, setReset] = useState<{ userId: number; password: string } | null>(null);
+  const [reset, setReset] = useState<{ userId: number; password: string; requireChange: boolean } | null>(null);
   // Feedback reports the result of the last request without exposing a password.
   const [feedback, setFeedback] = useState<{ error?: string; success?: string } | null>(null);
   // Loading prevents duplicate requests while the account list refreshes.
@@ -92,8 +93,9 @@ export function UsersAdminPanel() {
     setLoading(true);
     setFeedback(null);
     try {
-      await readApiJson(await api.auth.resetUserPassword(reset.userId, reset.password));
+      await readApiJson(await api.auth.resetUserPassword(reset.userId, reset.password, reset.requireChange));
       setReset(null);
+      await loadAccounts();
       setFeedback({ success: t('users.passwordUpdated') });
     } catch (error) {
       setFeedback({ error: error instanceof Error ? error.message : String(error) });
@@ -153,7 +155,10 @@ export function UsersAdminPanel() {
           <div key={account.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border p-3">
             <div className="min-w-40 flex-1">
               <div className="font-medium text-foreground">{account.username}</div>
-              <div className="text-xs text-muted-foreground">{account.identity_provider}</div>
+              <div className="text-xs text-muted-foreground">
+                {account.identity_provider}
+                {account.must_change_password === 1 && ` · ${t('users.mustChange')}`}
+              </div>
             </div>
             <select
               aria-label={`${t('users.role')}: ${account.username}`}
@@ -177,7 +182,7 @@ export function UsersAdminPanel() {
               <button
                 type="button"
                 className="rounded-md border border-border px-3 py-1 text-sm"
-                onClick={() => setReset({ userId: account.id, password: '' })}
+                onClick={() => setReset({ userId: account.id, password: '', requireChange: true })}
               >
                 {t('users.resetPassword')}
               </button>
@@ -199,6 +204,14 @@ export function UsersAdminPanel() {
             minLength={8}
             required
           />
+          <label className="flex items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={reset.requireChange}
+              onChange={(event) => setReset({ ...reset, requireChange: event.target.checked })}
+            />
+            {t('users.requireChange')}
+          </label>
           <button disabled={loading} className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">
             {t('users.savePassword')}
           </button>

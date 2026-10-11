@@ -20,6 +20,7 @@ const AUTH_ERROR_MESSAGES = {
   authStatusCheckFailed: 'errors.authStatusCheckFailed',
   loginFailed: 'errors.loginFailed',
   registrationFailed: 'errors.registrationFailed',
+  passwordChangeFailed: 'errors.passwordChangeFailed',
   networkError: 'errors.networkError',
   sessionExpired: 'errors.sessionExpired',
 } as const;
@@ -56,9 +57,11 @@ type AuthContextValue = {
   isLoading: boolean;
   needsSetup: boolean;
   hasCompletedOnboarding: boolean;
+  mustChangePassword: boolean;
   error: string | null;
   login: (username: string, password: string) => Promise<AuthActionResult>;
   register: (username: string, password: string) => Promise<AuthActionResult>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<AuthActionResult>;
   logout: () => void;
   refreshOnboardingStatus: () => Promise<void>;
 };
@@ -126,10 +129,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     resetChatDrafts();
   }, []);
 
+  // A temporary-password session is withheld from consumers: the server refuses it
+  // everything but the change, so providers above ProtectedRoute wait for the change.
+  const mustChangePassword = Boolean(user?.must_change_password);
+  const sessionUser = mustChangePassword ? null : user;
+
   // Preferences live in auth.db, so they can only be fetched once there is a
   // user to fetch them for. Until this resolves, every reader falls back to the
   // localStorage mirror of the last known server state.
-  const userKey = user ? String(user.id ?? user.username) : null;
+  const userKey = sessionUser ? String(sessionUser.id ?? sessionUser.username) : null;
   useEffect(() => {
     if (!userKey) {
       return;
@@ -364,6 +372,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
     [publishSession, t],
   );
 
+  const changePassword = useCallback<AuthContextValue['changePassword']>(
+    async (currentPassword, newPassword) => {
+      try {
+        const response = await api.auth.changePassword(currentPassword, newPassword);
+        const payload = await parseJsonSafely<AuthSessionPayload>(response);
+
+        if (!response.ok || !payload?.token || !payload.user) {
+          return { success: false, error: resolveApiErrorMessage(payload, t(AUTH_ERROR_MESSAGES.passwordChangeFailed)) };
+        }
+
+        await publishSession(payload.user, payload.token);
+        return { success: true };
+      } catch (caughtError) {
+        console.error('Password change error:', caughtError);
+        return { success: false, error: t(AUTH_ERROR_MESSAGES.networkError) };
+      }
+    },
+    [publishSession, t],
+  );
+
   const logout = useCallback(() => {
     // JWT logout is client-side: the server endpoint does not maintain a
     // revocation list, so clearing the session is the complete operation.
@@ -372,28 +400,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const contextValue = useMemo<AuthContextValue>(
     () => ({
-      user,
+      user: sessionUser,
       token,
       isLoading,
       needsSetup,
       hasCompletedOnboarding,
+      mustChangePassword,
       error,
       login,
       register,
+      changePassword,
       logout,
       refreshOnboardingStatus,
     }),
     [
+      changePassword,
       error,
       hasCompletedOnboarding,
       isLoading,
       login,
       logout,
+      mustChangePassword,
       needsSetup,
       refreshOnboardingStatus,
       register,
       token,
-      user,
+      sessionUser,
     ],
   );
 

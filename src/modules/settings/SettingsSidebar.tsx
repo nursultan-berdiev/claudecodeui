@@ -1,8 +1,8 @@
-import { Bell, Bot, Info, Key, ListChecks, Mic, MonitorPlay, Palette, Puzzle, Users } from 'lucide-react';
+import { Bell, Bot, Info, Key, KeyRound, ListChecks, Mic, MonitorPlay, Palette, Puzzle, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/modules/auth';
-import { cn } from '@/shared/utils';
+import { cn, IS_PLATFORM } from '@/shared/utils';
 import { PillBar, Pill } from '@/shared/ui';
 import type { SettingsMainTab } from '@/shared/types';
 
@@ -20,6 +20,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { id: 'agents', labelKey: 'mainTabs.agents', icon: Bot },
   { id: 'appearance', labelKey: 'mainTabs.appearance', icon: Palette },
+  { id: 'account', labelKey: 'mainTabs.account', icon: KeyRound },
   { id: 'api', labelKey: 'mainTabs.apiTokens', icon: Key },
   { id: 'voice', labelKey: 'mainTabs.voice', icon: Mic },
   { id: 'tasks', labelKey: 'mainTabs.tasks', icon: ListChecks },
@@ -36,7 +37,8 @@ export default function SettingsSidebar({ activeTab, onChange }: SettingsSidebar
   const { t } = useTranslation('settings');
   const { user } = useAuth();
   const visibleItems = NAV_ITEMS.filter((item) =>
-    user?.role === 'admin' || !['users', 'plugins', 'departments'].includes(item.id));
+    (user?.role === 'admin' || !['users', 'plugins', 'departments'].includes(item.id))
+    && !(IS_PLATFORM && item.id === 'account'));
 
   return (
     <>

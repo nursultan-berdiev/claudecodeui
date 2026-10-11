@@ -179,3 +179,36 @@ test('an ordinary response leaves the stored token alone', async () => {
 
   assert.equal(localStorage.getItem('auth-token'), token);
 });
+
+test('an auth error on the current token ends the session', async () => {
+  const token = liveToken();
+  localStorage.setItem('auth-token', token);
+  respondWith({ 'X-Auth-Error': 'invalid-token' });
+  const onExpired = vi.fn();
+  window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, onExpired);
+
+  await (await loadFetch(false))('/api/projects');
+
+  window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, onExpired);
+  assert.equal(onExpired.mock.calls.length, 1);
+  assert.equal(localStorage.getItem('auth-token'), null);
+});
+
+test('an auth error on a token that has since been replaced leaves the new session alone', async () => {
+  const oldToken = liveToken();
+  const newToken = makeToken({ iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 900 });
+  localStorage.setItem('auth-token', oldToken);
+  // The password change stores its new token while this request, sent with the old one, is in flight.
+  vi.stubGlobal('fetch', vi.fn(async () => {
+    localStorage.setItem('auth-token', newToken);
+    return new Response('{}', { status: 401, headers: { 'X-Auth-Error': 'invalid-token' } });
+  }));
+  const onExpired = vi.fn();
+  window.addEventListener(AUTH_SESSION_EXPIRED_EVENT, onExpired);
+
+  await (await loadFetch(false))('/api/projects');
+
+  window.removeEventListener(AUTH_SESSION_EXPIRED_EVENT, onExpired);
+  assert.equal(onExpired.mock.calls.length, 0);
+  assert.equal(localStorage.getItem('auth-token'), newToken);
+});

@@ -72,7 +72,7 @@ export const apiKeysDb = {
   /**
    * Validates an API key and resolves the owning user.
    * If the key is valid, its `last_used` timestamp is updated as a side effect.
-   * Returns undefined when the key is invalid or the user is inactive.
+   * Returns undefined when the key is invalid, the user is inactive, or the user still has to change a temporary password.
    */
   validateApiKey(apiKey: string): ValidatedApiKeyUser | undefined {
     const db = getConnection();
@@ -81,7 +81,7 @@ export const apiKeysDb = {
         `SELECT u.id, u.username, u.role, ak.id as api_key_id
          FROM api_keys ak
          JOIN users u ON ak.user_id = u.id
-         WHERE ak.api_key = ? AND ak.is_active = 1 AND u.is_active = 1`
+         WHERE ak.api_key = ? AND ak.is_active = 1 AND u.is_active = 1 AND u.must_change_password = 0`
       )
       .get(apiKey) as ValidatedApiKeyUser | undefined;
 
