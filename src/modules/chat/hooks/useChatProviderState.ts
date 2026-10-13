@@ -11,6 +11,7 @@ import type { PendingPermissionRequest, PermissionMode,
   ProviderModelsDefinition } from '@/shared/types';
 import { DEFAULT_EFFORT_VALUE } from '@/shared/constants';
 import { readSelectedProvider, writeSelectedProvider } from '@/shared/selectedProvider';
+import { useSelectedProvider } from '@/shared/hooks/useSelectedProvider';
 
 const FALLBACK_PROVIDER_EFFORT_VALUES: Partial<Record<LLMProvider, readonly string[]>> = {
   // Superset used only before the model catalog loads; `ultracode` belongs to the
@@ -434,6 +435,16 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
     setProvider(selectedSession.__provider);
     writeSelectedProvider(selectedSession.__provider);
   }, [provider, selectedSession]);
+
+  // Until a session owns the composer, the stored choice decides: the New chat dialog
+  // and the server copy of the preferences both write it after this hook has mounted.
+  const storedProvider = useSelectedProvider();
+  const hasSession = Boolean(selectedSession);
+  useEffect(() => {
+    if (!hasSession) {
+      setProvider(storedProvider);
+    }
+  }, [hasSession, storedProvider]);
 
   // Permission prompts belong to a session, not to the transient provider
   // selection that is synchronized after navigation.
