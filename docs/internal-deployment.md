@@ -43,6 +43,24 @@ are restored as Auto; the other legacy choices become Plan.
 The Docker runtime includes Python, python-docx, openpyxl, pdftotext and unzip
 for reading DOCX, XLSX and text-based PDFs during document workflows.
 
+Agents read and edit Word and Excel files with `docli`, the KeyDev document
+CLI. It is not published, so a deployment copies its wheel
+(`docli-<version>-py3-none-any.whl`) into `docker/vendor/` before
+`docker compose build`; the build stops when it is missing. The image installs
+it into its own virtual environment and links it as `/usr/local/bin/docli`, so
+Claude, Codex and the terminal find it on `PATH`.
+
+`docker/agent-instructions.md` tells every agent to use `docli word` and
+`docli excel` instead of ad-hoc scripts. The image points
+`CLOUDCLI_AGENT_INSTRUCTIONS_FILE` at it; the server appends the file to the
+Claude Code system prompt and passes it to Codex as `developer_instructions`.
+Edit that file to change what agents are told. In Plan, Claude runs the
+read-only docli commands (`word read|tables|search|info`,
+`excel sheets|read|cell|search|info`) without asking; Codex Plan already runs
+commands in its read-only sandbox. A Bash prefix rule never approves a command
+that chains, pipes, redirects or substitutes after the prefix; such a command
+asks for approval instead.
+
 The chat owner uses Share chat to grant access to their departments or the
 entire company. Recipients can read and continue the chat, while changing its
 sharing, renaming, editing past prompts and deleting it remain owner actions.

@@ -17,7 +17,7 @@ ARG SOURCE_REVISION=local
 LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 ARG CLAUDE_CODE_VERSION=2.1.288
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates git openssh-client python3 python3-docx python3-openpyxl poppler-utils unzip \
+    ca-certificates git openssh-client python3 python3-docx python3-openpyxl python3-venv poppler-utils unzip \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" --no-audit --no-fund
 
@@ -30,6 +30,15 @@ COPY --from=build /app/public ./public
 
 RUN mkdir -p /workspace /home/node/.cloudcli && chown -R node:node /workspace /home/node
 
+# docli, the KeyDev Word/Excel CLI, is not published; a deployment places its wheel in docker/vendor/ before building.
+COPY docker/vendor/docli-*.whl /tmp/docli/
+RUN python3 -m venv /opt/docli \
+    && /opt/docli/bin/pip install --no-cache-dir /tmp/docli/*.whl \
+    && ln -s /opt/docli/bin/docli /usr/local/bin/docli \
+    && rm -rf /tmp/docli \
+    && docli word --help > /dev/null && docli excel --help > /dev/null
+COPY --from=build /app/docker/agent-instructions.md ./agent-instructions.md
+
 # The CLI version is pinned by CLAUDE_CODE_VERSION; the node user cannot write the global npm prefix anyway.
 # claude.ai connectors belong to the signed-in account (mail, drive, calendar); every user of this server would share them.
 ENV NODE_ENV=production \
@@ -39,6 +48,7 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     SERVER_PORT=3001 \
     DATABASE_PATH=/home/node/.cloudcli/auth.db \
+    CLOUDCLI_AGENT_INSTRUCTIONS_FILE=/app/agent-instructions.md \
     PATH=/app/node_modules/.bin:$PATH
 
 USER node

@@ -22,6 +22,7 @@ import {
   createNormalizedMessage,
 } from '@/shared/index.js';
 import { notifyRunFailed, notifyRunStopped } from '@/modules/notifications/index.js';
+import { readAgentInstructions } from '@/shared/agent-instructions.js';
 import type { AnyRecord, ProviderRuntimeContext, ProviderRuntimeWriter } from '@/shared/index.js';
 
 type ActiveCodexSession = {
@@ -318,7 +319,8 @@ async function queryCodex(
   const sessionKey = () => sessionId || capturedSessionId || null;
 
   try {
-    codex = new Codex();
+    const agentInstructions = readAgentInstructions();
+    codex = new Codex(agentInstructions ? { config: { developer_instructions: agentInstructions } } : undefined);
 
     const threadOptions: ThreadOptions = {
       workingDirectory,
