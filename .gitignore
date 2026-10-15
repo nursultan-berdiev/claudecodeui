@@ -152,3 +152,6 @@ electron/*.tar.gz
 # Test fixtures created beside the tests (cleaned up by the tests; kept out of the tree if a run is killed)
 server/**/tests/read-only-roots-fixture-*/
 server/**/tests/file-tree-outside-*/
+
+# Internal tools a deployment drops in before `docker compose build` (see docker/vendor/README.md)
+docker/vendor/*.whl
