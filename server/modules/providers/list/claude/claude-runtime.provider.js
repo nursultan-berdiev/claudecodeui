@@ -28,6 +28,7 @@ import {
   CLAUDE_PREDEFINED_MODELS,
   CLAUDE_ULTRACODE_EFFORT
 } from '@/modules/providers/list/claude/claude-models.provider.js';
+import { readAgentInstructions } from '@/shared/agent-instructions.js';
 import { resolveClaudeCodeExecutablePath } from '@/shared/claude-cli-path.js';
 import {
   createNotificationEvent,
@@ -190,6 +191,15 @@ function resolveToolApproval(requestId, decision) {
 // This only supports exact tool names and the Bash(command:*) shorthand
 // used by the UI; it intentionally does not implement full glob semantics,
 // introduced to stay consistent with the UI's "Allow rule" format.
+// A prefix rule approves one command, not whatever is chained, piped or substituted after it.
+const SHELL_CONTROL_CHARACTERS = /[;&|`$<>\r\n]/;
+
+// Reading Word and Excel through docli changes nothing, so Plan runs it without asking.
+const READ_ONLY_DOCLI_RULES = [
+  'word read', 'word tables', 'word search', 'word info',
+  'excel sheets', 'excel read', 'excel cell', 'excel search', 'excel info',
+].map((command) => `Bash(docli ${command}:*)`);
+
 function matchesToolPermission(entry, toolName, input) {
   if (!entry || !toolName) {
     return false;
@@ -210,7 +220,7 @@ function matchesToolPermission(entry, toolName, input) {
       command = input.command.trim();
     }
 
-    if (!command) {
+    if (!command || SHELL_CONTROL_CHARACTERS.test(command)) {
       return false;
     }
 
@@ -259,7 +269,7 @@ function mapCliOptionsToSDK(options = {}) {
   let allowedTools = [...(settings.allowedTools || [])];
 
   if (permissionMode === 'plan') {
-    const planModeTools = ['Read', 'Task', 'exit_plan_mode', 'TodoRead', 'TodoWrite', 'WebFetch', 'WebSearch'];
+    const planModeTools = ['Read', 'Task', 'exit_plan_mode', 'TodoRead', 'TodoWrite', 'WebFetch', 'WebSearch', ...READ_ONLY_DOCLI_RULES];
     for (const tool of planModeTools) {
       if (!allowedTools.includes(tool)) {
         allowedTools.push(tool);
@@ -284,9 +294,11 @@ function mapCliOptionsToSDK(options = {}) {
     options.effortModels || CLAUDE_PREDEFINED_MODELS,
   ));
 
+  const agentInstructions = readAgentInstructions();
   sdkOptions.systemPrompt = {
     type: 'preset',
-    preset: 'claude_code'
+    preset: 'claude_code',
+    ...(agentInstructions ? { append: agentInstructions } : {}),
   };
 
   sdkOptions.settingSources = ['project', 'user', 'local'];
@@ -1469,6 +1481,8 @@ export const claudeRuntime = {
 
 // Export public API
 export {
+  mapCliOptionsToSDK,
+  matchesToolPermission,
   queryClaudeSDK,
   abortClaudeSDKSession,
   listClaudeSDKBackgroundWork,
