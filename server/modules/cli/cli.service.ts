@@ -230,7 +230,6 @@ export function createCliService(dependencies: CliServiceDependencies): CliAppli
 
       switch (parsedArguments.command) {
         case 'start':
-          void checkForUpdates(true);
           await dependencies.startServer();
           return 0;
         case 'sandbox':
