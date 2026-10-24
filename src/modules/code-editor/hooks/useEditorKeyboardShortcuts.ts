@@ -1,8 +1,6 @@
 import { useEffect } from 'react';
 
-// Open menus, modal dialogs and layers using the app's `data-escape-layer`
-// marker sit above the editor and close on Escape themselves.
-const ESCAPE_LAYER_SELECTOR = '[data-escape-layer], [aria-modal="true"], [role="menu"]';
+import { ESCAPE_LAYER_SELECTOR } from '@/shared/constants';
 
 type UseEditorKeyboardShortcutsParams = {
   onSave: () => void;

@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { ChevronDown, Plus } from "lucide-react";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 
 import type {
   ProjectSession,
@@ -18,13 +18,13 @@ import {
   CommandInput,
   CommandList,
   CommandEmpty,
-  Card,
   Button,
   LLMProviderLogo,
 } from "@/shared/ui";
 import ModelGroupList, { type ModelGroup } from "@/modules/chat/composer/ModelGroupList";
 import ModelLibraryPanel from "@/modules/chat/modals/ModelLibraryPanel";
 import { writeSelectedProvider } from '@/shared/selectedProvider';
+import { useAuth } from '@/modules/auth';
 
 const PROVIDER_META: { id: LLMProvider; name: string }[] = [
   { id: "claude", name: "Anthropic" },
@@ -32,9 +32,6 @@ const PROVIDER_META: { id: LLMProvider; name: string }[] = [
   { id: "cursor", name: "Cursor" },
   { id: "opencode", name: "OpenCode" },
 ];
-
-const MOD_KEY =
-  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
 
 // cmdk's default filter is fuzzy (loose character-subsequence scoring), which
 // surfaces unrelated models — e.g. searching "chatgpt" also matched "Fable".
@@ -102,6 +99,7 @@ export default function ProviderSelectionEmptyState({
   setInput,
 }: ProviderSelectionEmptyStateProps) {
   const { t } = useTranslation("chat");
+  const isAdmin = useAuth().user?.role === "admin";
   const [dialogOpen, setDialogOpen] = useState(false);
   const [modelLibraryOpen, setModelLibraryOpen] = useState(false);
 
@@ -170,47 +168,24 @@ export default function ProviderSelectionEmptyState({
   if (!selectedSession && !currentSessionId) {
     return (
       <div className="flex h-full items-center justify-center px-4">
-        <div className="w-full max-w-[34.25rem]">
-          <div className="mb-8 text-center">
-            <h2 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl">
-              {t("providerSelection.title")}
-            </h2>
-            <p className="mt-1 text-[13px] text-muted-foreground">
-              {t("providerSelection.description")}
-            </p>
-          </div>
+        <div className="w-full max-w-[34.25rem] pb-12 text-center">
+          <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[28px]">
+            {t("providerSelection.greeting", { defaultValue: "What can I help with?" })}
+          </h2>
 
           <Dialog open={dialogOpen} onOpenChange={setPickerOpen}>
             <DialogTrigger asChild>
-              <Card
-                className="group mx-auto max-w-xs cursor-pointer border-border/60 transition-all duration-150 hover:border-border hover:shadow-md active:scale-[0.99]"
-                role="button"
-                tabIndex={0}
+              <button
+                type="button"
+                className="mx-auto mt-4 inline-flex max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                title={t("providerSelection.clickToChange", { defaultValue: "Click to change model" })}
               >
-                <div className="flex items-center gap-2 p-3">
-                  <LLMProviderLogo
-                    provider={provider}
-                    className="h-5 w-5 shrink-0"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1">
-                      <span className="text-xs font-semibold text-foreground">
-                        {getProviderDisplayName(provider)}
-                      </span>
-                      <span className="text-xs text-muted-foreground">·</span>
-                      <span className="truncate text-xs text-foreground">
-                        {currentModelLabel}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      {t("providerSelection.clickToChange", {
-                        defaultValue: "Click to change model",
-                      })}
-                    </p>
-                  </div>
-                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-y-0.5" />
-                </div>
-              </Card>
+                <LLMProviderLogo provider={provider} className="h-4 w-4 shrink-0" />
+                <span className="truncate">
+                  {getProviderDisplayName(provider)} · {currentModelLabel}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+              </button>
             </DialogTrigger>
 
             <DialogContent className="max-w-md overflow-hidden p-0">
@@ -228,16 +203,19 @@ export default function ProviderSelectionEmptyState({
                     })}
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={openModelLibrary}
-                  className="h-8 shrink-0 rounded-lg px-2.5 text-xs"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  {t("providerSelection.addModel", { defaultValue: "Add model" })}
-                </Button>
+                {/* The server lets only administrators change the model library. */}
+                {isAdmin && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={openModelLibrary}
+                    className="h-8 shrink-0 rounded-lg px-2.5 text-xs"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {t("providerSelection.addModel", { defaultValue: "Add model" })}
+                  </Button>
+                )}
               </div>
               <Command filter={modelSearchFilter}>
                 <CommandInput
@@ -293,39 +271,6 @@ export default function ProviderSelectionEmptyState({
               />
             </DialogContent>
           </Dialog>
-
-          <p className="mt-4 text-center text-sm text-muted-foreground/70">
-            {
-              {
-                claude: t("providerSelection.readyPrompt.claude", {
-                  model: providerModels.claude,
-                }),
-                cursor: t("providerSelection.readyPrompt.cursor", {
-                  model: providerModels.cursor,
-                }),
-                codex: t("providerSelection.readyPrompt.codex", {
-                  model: providerModels.codex,
-                }),
-                opencode: t("providerSelection.readyPrompt.opencode", {
-                  model: providerModels.opencode,
-                  defaultValue: "Ready with OpenCode {{model}}",
-                }),
-              }[provider]
-            }
-          </p>
-
-          <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground/60">
-            <Trans
-              ns="chat"
-              i18nKey="providerSelection.pressToSearch"
-              values={{ shortcut: MOD_KEY === "⌘" ? "⌘K" : "Ctrl+K" }}
-              components={{
-                kbd: (
-                  <kbd className="inline-flex items-center gap-0.5 rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-[10px]" />
-                ),
-              }}
-            />
-          </p>
 
           {provider && tasksEnabled && isTaskMasterInstalled && (
             <div className="mt-5">

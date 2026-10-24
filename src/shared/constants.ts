@@ -149,14 +149,13 @@ export const MCP_SUPPORTS_WORKING_DIRECTORY: Record<McpProvider, boolean> = {
 
 // ---------------------------
 
-//----------------- QUICK SETTINGS PANEL ROWS ------------
+//----------------- KEYBOARD LAYERS ------------
 
 /**
- * Class list for one row in the quick settings panel. Shared so plain rows and the clickable
- * toggle row (which appends `cursor-pointer`) stay visually identical.
+ * Matches open menus, modal dialogs and layers marked `data-escape-layer`. They close on Escape
+ * themselves, so page-level Escape shortcuts (abort the agent, close the editor) skip while one is open.
  */
-export const SETTING_ROW_CLASS =
-  'flex items-center justify-between p-3 rounded-lg bg-muted/60 hover:bg-accent transition-colors border border-transparent hover:border-border';
+export const ESCAPE_LAYER_SELECTOR = '[data-escape-layer], [aria-modal="true"], [role="menu"]';
 
 // ---------------------------
 

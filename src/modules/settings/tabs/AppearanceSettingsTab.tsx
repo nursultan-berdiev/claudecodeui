@@ -20,7 +20,7 @@ type AppearanceSettingsTabProps = {
   onCodeEditorFontSizeChange: (value: string) => void;
 };
 
-/** Rendered by Settings for theme, workspace visibility, project sorting and code editor preferences. */
+/** Rendered by Settings for theme, chat display, workspace visibility, project sorting and code editor preferences. */
 export default function AppearanceSettingsTab({
   projectSortOrder,
   onProjectSortOrderChange,
@@ -32,7 +32,7 @@ export default function AppearanceSettingsTab({
 }: AppearanceSettingsTabProps) {
   const { t } = useTranslation('settings');
   const { themeMode, setThemeMode } = useTheme();
-  const { showTerminalTab, showFilesTab } = useUiPreferences();
+  const { showTerminalTab, showFilesTab, showReasoning, showRawParameters, sendByCtrlEnter } = useUiPreferences();
   const setPreference = useSetUiPreference();
   const { user } = useAuth();
 
@@ -61,6 +61,38 @@ export default function AppearanceSettingsTab({
       <SettingsSection title={t('mainTabs.appearance')}>
         <SettingsCard>
           <LanguageSelector />
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection title={t('appearanceSettings.chat.title')}>
+        <SettingsCard divided>
+          <SettingsRow label={t('quickSettings.showThinking')}>
+            <SettingsToggle
+              checked={showReasoning}
+              onChange={(value) => setPreference('showReasoning', value)}
+              ariaLabel={t('quickSettings.showThinking')}
+            />
+          </SettingsRow>
+          {/* Raw tool input is a debugging aid for whoever runs the agents. */}
+          {user?.role === 'admin' && (
+            <SettingsRow label={t('quickSettings.showRawParameters')}>
+              <SettingsToggle
+                checked={showRawParameters}
+                onChange={(value) => setPreference('showRawParameters', value)}
+                ariaLabel={t('quickSettings.showRawParameters')}
+              />
+            </SettingsRow>
+          )}
+          <SettingsRow
+            label={t('quickSettings.sendByCtrlEnter')}
+            description={t('quickSettings.sendByCtrlEnterDescription')}
+          >
+            <SettingsToggle
+              checked={sendByCtrlEnter}
+              onChange={(value) => setPreference('sendByCtrlEnter', value)}
+              ariaLabel={t('quickSettings.sendByCtrlEnter')}
+            />
+          </SettingsRow>
         </SettingsCard>
       </SettingsSection>
 

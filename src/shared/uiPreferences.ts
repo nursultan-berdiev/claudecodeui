@@ -15,7 +15,7 @@ type UiPreferencesAction =
 
 const DEFAULTS: UiPreferences = {
   showRawParameters: false,
-  showThinking: true,
+  showReasoning: false,
   sendByCtrlEnter: false,
   sidebarVisible: true,
   voiceEnabled: false,

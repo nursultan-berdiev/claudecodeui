@@ -38,8 +38,8 @@ export default function SidebarModeTabs({
   t,
 }: SidebarModeTabsProps) {
   const tabs: ModeTab[] = [
-    { mode: 'projects', label: t('search.modeProjects'), icon: Folder, showLabel: true },
     { mode: 'conversations', label: t('search.modeConversations'), icon: MessageSquare, showLabel: true },
+    { mode: 'projects', label: t('search.modeProjects'), icon: Folder, showLabel: true },
     { mode: 'running', label: t('search.runningTooltip', 'Running sessions'), icon: Activity, showLabel: false },
     { mode: 'archived', label: t('search.archiveOnlyTooltip', 'Archive only'), icon: Archive, showLabel: false },
   ];
@@ -65,7 +65,7 @@ export default function SidebarModeTabs({
           tab.mode === 'archived' && 'px-2.5',
           canGrow && tab.showLabel && 'flex-1',
           isActive
-            ? 'bg-background text-foreground shadow-sm'
+            ? 'bg-accent text-foreground'
             : 'text-muted-foreground hover:text-foreground',
           isActive && tab.mode === 'running' && 'ring-1 ring-emerald-500/15',
         )}
@@ -111,7 +111,7 @@ export default function SidebarModeTabs({
   );
 
   return (
-    <div className="rounded-lg bg-muted/50 p-0.5">
+    <div className="rounded-lg p-0.5">
       <div ref={rowRef} className="relative flex">
         {visibleIndexes.map((index) => (
           <Fragment key={tabs[index].mode}>{renderTab(tabs[index], true)}</Fragment>
