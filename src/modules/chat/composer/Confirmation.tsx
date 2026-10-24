@@ -18,7 +18,7 @@ import { cn } from '@/shared/utils';
 // Inlined from shared/ui/Alert, which was never in the barrel and had this file
 // as its only importer.
 const alertVariants = cva(
-  'relative grid w-full grid-cols-[0_1fr] items-start gap-y-0.5 rounded-lg border px-4 py-3 text-sm has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] has-[>svg]:gap-x-3 [&>svg]:size-4 [&>svg]:translate-y-0.5 [&>svg]:text-current',
+  'relative grid w-full grid-cols-[0_1fr] items-start gap-y-0.5 rounded-2xl border px-4 py-3 text-sm shadow-sm has-[>svg]:grid-cols-[calc(var(--spacing)*4)_1fr] has-[>svg]:gap-x-3 [&>svg]:size-4 [&>svg]:translate-y-0.5 [&>svg]:text-current',
   {
     variants: {
       variant: {
@@ -144,6 +144,6 @@ export const ConfirmationAction: React.FC<ConfirmationActionProps> = ({
   variant = 'default',
   ...props
 }) => (
-  <Button className="h-8 px-3 text-sm" variant={variant} type="button" {...props} />
+  <Button className="h-8 rounded-full px-3.5 text-sm" variant={variant} type="button" {...props} />
 );
 ConfirmationAction.displayName = 'ConfirmationAction';

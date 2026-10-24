@@ -1,10 +1,12 @@
 import { memo, useMemo, useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { ChevronRight, Loader2 } from 'lucide-react';
 
-import type { ChatMessage, ClaudePermissionSuggestion, PermissionGrantResult, LLMProvider,DiffLine,DiffStats,Project,ToolGroupItem } from '@/shared/types';
+import type { ChatMessage, ClaudePermissionSuggestion, PermissionGrantResult, LLMProvider,DiffLine,DiffStats,Project,ToolGroupItem,TranscriptRevealRequest } from '@/shared/types';
 import { getToolConfig } from '@/modules/chat/tools';
 import MessageComponent from '@/modules/chat/transcript/MessageComponent';
 import { useIsExportingTranscript } from '@/modules/chat/context/TranscriptRenderContext';
+import { useRevealRequest } from '@/modules/chat/context/TranscriptRevealContext';
 import { DiffStatsBadge } from '@/modules/chat/tools/DiffStatsBadge';
 import { parseToolPayload, summarizeDiff } from '@/modules/chat/utils/messageTransforms';
 
@@ -20,32 +22,36 @@ type ToolGroupContainerProps = {
   showThinking?: boolean;
   selectedProject?: Project | null;
   provider: LLMProvider | string;
+  /**
+   * True only for the transcript's last row while the session works. A call
+   * left without a result in history (an interrupted turn) is not running.
+   */
+  canStillRun?: boolean;
 };
 
 /**
  * Totals the lines a run of file edits added and removed.
  *
- * A collapsed group hides every individual diff behind `x4`, so without this
- * the one thing the row could usefully say about a batch of edits — how big it
- * is — is the one thing it did not. Returns null for groups of tools that do
- * not render a diff at all.
+ * A collapsed group hides every individual diff, so without this the one thing
+ * the row could usefully say about a batch of edits — how big it is — is the
+ * one thing it did not. Each call is read through its own tool's config, since a
+ * group mixes tools. Returns null when no call in the group renders a diff.
  */
 function useGroupDiffStats(
-  toolName: string,
   messages: ChatMessage[],
   createDiff: (oldStr: string, newStr: string) => DiffLine[],
 ): DiffStats | null {
   return useMemo(() => {
-    const config = getToolConfig(toolName).input;
-    if (config.contentType !== 'diff' || !config.getContentProps) {
-      return null;
-    }
-
     let added = 0;
     let removed = 0;
     let counted = 0;
 
     for (const message of messages) {
+      const config = getToolConfig(message.toolName || 'UnknownTool').input;
+      if (config.contentType !== 'diff' || !config.getContentProps) {
+        continue;
+      }
+
       const contentProps = config.getContentProps(parseToolPayload(message.toolInput) ?? {});
       if (typeof contentProps?.oldContent !== 'string' || typeof contentProps?.newContent !== 'string') {
         continue;
@@ -58,20 +64,12 @@ function useGroupDiffStats(
     }
 
     return counted > 0 ? { added, removed } : null;
-  }, [createDiff, messages, toolName]);
-}
-
-function getToolGroupIcon(icon: string | undefined, toolName: string): string {
-  if (icon === 'terminal') {
-    return '$';
-  }
-
-  return icon || toolName.slice(0, 1).toUpperCase();
+  }, [createDiff, messages]);
 }
 
 /**
- * Rendered by chat's ChatMessagesPane to collapse a run of consecutive tool
- * calls into a single expandable group in the transcript.
+ * Rendered by chat's ChatMessagesPane to fold a run of consecutive tool calls
+ * into one quiet summary line ("Ran 3 actions") that expands to the calls.
  */
 function ToolGroupContainer({
   group,
@@ -85,21 +83,41 @@ function ToolGroupContainer({
   showThinking,
   selectedProject,
   provider,
+  canStillRun = false,
 }: ToolGroupContainerProps) {
+  const { t } = useTranslation('chat');
   const isExporting = useIsExportingTranscript();
   // Collapsed on screen, always open in an export: the whole point of the
   // group row is to hide detail the reader can ask for, and an exported file
   // has no way to ask.
   const [isExpanded, setIsExpanded] = useState(false);
-  const showChildren = isExpanded || isExporting;
-  const config = getToolConfig(group.toolName).input;
-  const label = config.label || group.toolName;
-  const borderClass = config.colorScheme?.border || 'border-border';
-  const iconClass = config.colorScheme?.icon || 'text-muted-foreground';
-  const icon = getToolGroupIcon(config.icon, group.toolName);
+  // A reveal (search hit, background-task chip) aimed at one of these calls
+  // opens the group until the user closes it; a later reveal opens it again.
+  const revealRequest = useRevealRequest();
+  const [closedReveal, setClosedReveal] = useState<TranscriptRevealRequest | null>(null);
+  const isOpenForReveal = revealRequest !== null
+    && revealRequest !== closedReveal
+    && group.messages.includes(revealRequest.message);
+  const isOpen = isExpanded || isOpenForReveal;
+  const showChildren = isOpen || isExporting;
+  const groupDiffStats = useGroupDiffStats(group.messages, createDiff);
 
-  const preview = group.preview;
-  const groupDiffStats = useGroupDiffStats(group.toolName, group.messages, createDiff);
+  const toggleOpen = () => {
+    if (isOpenForReveal) {
+      setClosedReveal(revealRequest);
+    }
+    setIsExpanded(!isOpen);
+  };
+
+  const isRunning = canStillRun && group.runningCount > 0;
+  const summary = isRunning
+    ? t('toolGroup.running', { defaultValue: 'Working…' })
+    : t('toolGroup.done', { count: group.messages.length, defaultValue: 'Ran {{count}} actions' });
+  const previewParts = [...group.previewNames];
+  if (group.previewExtraCount > 0) {
+    previewParts.push(t('toolGroup.more', { count: group.previewExtraCount, defaultValue: '+{{count}} more' }));
+  }
+  const preview = previewParts.join(', ');
 
   // Keys only have to be unique among this group's own rows, so repeats of the
   // same key are disambiguated here by occurrence.
@@ -117,32 +135,29 @@ function ToolGroupContainer({
     <div className="chat-message tool px-3 sm:px-0" data-message-timestamp={group.timestamp || undefined}>
       <button
         type="button"
-        className={`group flex w-full items-center gap-2 border-l-2 ${borderClass} rounded-r-md bg-muted/25 px-3 py-2 text-left transition-colors hover:bg-muted/40 dark:bg-muted/10 dark:hover:bg-muted/20`}
-        onClick={() => setIsExpanded((current) => !current)}
-        aria-expanded={isExpanded}
+        className="group flex w-full min-w-0 items-center gap-1.5 rounded-lg py-1 text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
+        onClick={toggleOpen}
+        aria-expanded={isOpen}
       >
+        {isRunning && <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin" aria-hidden />}
+        <span className="flex-shrink-0">{summary}</span>
+        {group.failedCount > 0 && (
+          <span className="flex-shrink-0 text-red-600 dark:text-red-400">
+            · {t('toolGroup.failed', { count: group.failedCount, defaultValue: '{{count}} failed' })}
+          </span>
+        )}
+        {preview && (
+          <span className="min-w-0 truncate text-xs text-muted-foreground/70">{preview}</span>
+        )}
+        {groupDiffStats && <DiffStatsBadge stats={groupDiffStats} className="flex-shrink-0 pl-1" />}
         <ChevronRight
-          className={`h-3.5 w-3.5 flex-shrink-0 text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+          className={`h-3.5 w-3.5 flex-shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`}
           aria-hidden
         />
-        <span className={`${iconClass} flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-background/80 text-xs font-medium`}>
-          {icon}
-        </span>
-        <span className="min-w-0 flex-shrink-0 text-xs font-medium text-foreground">{label}</span>
-        <span className="flex-shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-          x{group.messages.length}
-        </span>
-        {preview && (
-          <>
-            <span className="text-[10px] text-muted-foreground/40">/</span>
-            <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{preview}</span>
-          </>
-        )}
-        {groupDiffStats && <DiffStatsBadge stats={groupDiffStats} className="ml-auto pl-2" />}
       </button>
 
       {showChildren && (
-        <div className="mt-2 space-y-3 sm:space-y-4">
+        <div className="ml-1.5 mt-2 space-y-3 border-l border-border pl-4">
           {group.messages.map((message, index) => (
             <MessageComponent
               key={messageKeys[index]}

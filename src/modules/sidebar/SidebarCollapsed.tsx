@@ -2,10 +2,13 @@ import { Settings, Sparkles, PanelLeftOpen, AlertTriangle, LogOut } from 'lucide
 import type { TFunction } from 'i18next';
 
 import { useAuth } from '@/modules/auth';
+import { NewChatButton } from '@/modules/company';
 import { IS_PLATFORM } from '@/shared/utils';
+import type { Project } from '@/shared/types';
 
 type SidebarCollapsedProps = {
   onExpand: () => void;
+  onNewSession: (project: Project) => void;
   onShowSettings: () => void;
   updateAvailable: boolean;
   restartRequired: boolean;
@@ -16,15 +19,18 @@ type SidebarCollapsedProps = {
 /** Rendered by Sidebar instead of SidebarContent when the panel is collapsed to its icon rail. */
 export default function SidebarCollapsed({
   onExpand,
+  onNewSession,
   onShowSettings,
   updateAvailable,
   restartRequired,
   onShowVersionModal,
   t,
 }: SidebarCollapsedProps) {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
+  // Server update notices concern whoever runs the server, as in the expanded footer.
+  const isAdmin = user?.role === 'admin';
   return (
-    <div className="flex h-full w-12 flex-col items-center gap-1 bg-background/80 py-3 backdrop-blur-sm">
+    <div className="flex h-full w-12 flex-col items-center gap-1 bg-sidebar py-3">
       {/* Expand button with brand logo */}
       <button
         onClick={onExpand}
@@ -35,7 +41,7 @@ export default function SidebarCollapsed({
         <PanelLeftOpen className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-foreground" />
       </button>
 
-      <div className="nav-divider my-1 w-6" />
+      <NewChatButton onOpenChat={onNewSession} compact />
 
       {/* Settings */}
       <button
@@ -59,7 +65,7 @@ export default function SidebarCollapsed({
       )}
 
       {/* Restart-required indicator */}
-      {restartRequired && (
+      {isAdmin && restartRequired && (
         <div
           className="relative flex h-8 w-8 items-center justify-center rounded-lg"
           aria-label={t('version.restartRequired')}
@@ -71,15 +77,15 @@ export default function SidebarCollapsed({
       )}
 
       {/* Update indicator */}
-      {updateAvailable && (
+      {isAdmin && updateAvailable && (
         <button
           onClick={onShowVersionModal}
           className="relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-accent/80"
           aria-label={t('common:versionUpdate.ariaLabels.updateAvailable')}
           title={t('common:versionUpdate.ariaLabels.updateAvailable')}
         >
-          <Sparkles className="h-4 w-4 text-blue-500" />
-          <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
+          <Sparkles className="h-4 w-4 text-muted-foreground" />
+          <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-foreground/60" />
         </button>
       )}
     </div>

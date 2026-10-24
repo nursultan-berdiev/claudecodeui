@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, test, vi } from 'vitest';
 
-import type { Project, ProjectSession } from '@/shared/types';
+import type { ProjectSession } from '@/shared/types';
 
 /**
  * The chat header's session title can be renamed in place: double-click opens
@@ -26,21 +26,7 @@ vi.mock('@/modules/plugins', () => ({
   usePlugins: () => ({ plugins: [] }),
 }));
 
-vi.mock('@/shared/ui', () => ({
-  LLMProviderLogo: () => null,
-}));
-
 const { default: WorkspaceTitle } = await import('@/modules/project-workspace/WorkspaceTitle');
-
-const project: Project = {
-  projectId: 'project-1',
-  path: '/repo',
-  fullPath: '/repo',
-  displayName: 'repo',
-  isStarred: false,
-  sessions: [],
-  sessionMeta: { hasMore: false, total: 0 },
-};
 
 const session: ProjectSession = {
   id: 'session-1',
@@ -54,7 +40,6 @@ const onRenameSession = vi.fn<(sessionId: string, summary: string) => Promise<bo
 const renderTitle = (overrides: { selectedSession?: ProjectSession | null; activeTab?: 'chat' | 'files' } = {}) => render(
   <WorkspaceTitle
     activeTab={overrides.activeTab ?? 'chat'}
-    selectedProject={project}
     selectedSession={overrides.selectedSession === undefined ? session : overrides.selectedSession}
     shouldShowTasksTab={false}
     onRenameSession={onRenameSession}
@@ -179,8 +164,9 @@ test('a refused rename is reported the way the sidebar reports it', async () => 
 });
 
 test('the title is not editable without a session or off the chat tab', () => {
+  // A new chat has no title yet, so there is nothing to show or rename.
   const { unmount } = renderTitle({ selectedSession: null });
-  fireEvent.doubleClick(titleHeading());
+  assert.equal(screen.queryByRole('heading', { level: 2 }), null);
   assert.equal(queryRenameInput(), null);
   unmount();
 

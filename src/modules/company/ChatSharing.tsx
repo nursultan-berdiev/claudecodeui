@@ -54,12 +54,12 @@ export function ChatSharing({ sessionId }: { sessionId: string }) {
   return <>
     <button type="button" aria-label={sharing.canManage ? t('company.shareChat') : label}
       disabled={!sharing.canManage} onClick={() => { setDraft(sharing); setError(''); }}
-      className="flex shrink-0 items-center gap-1 rounded-md border border-border px-2 py-1 text-xs disabled:opacity-70">
-      {sharing.visibility === 'private' ? <Lock className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
+      className="flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-70 disabled:hover:bg-transparent">
+      {sharing.visibility === 'private' ? <Lock className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
       <span className="hidden sm:inline">{label}</span>
     </button>
     {draft && createPortal(<div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 p-4" data-escape-layer>
-      <section role="dialog" aria-modal="true" aria-label={t('company.shareChat')} className="w-full max-w-md space-y-4 rounded-xl border border-border bg-background p-5 shadow-xl">
+      <section role="dialog" aria-modal="true" aria-label={t('company.shareChat')} className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-background p-5 shadow-xl">
         <h2 className="font-semibold">{t('company.shareChat')}</h2>
         <p className="text-sm text-muted-foreground">{t('company.chatShareDescription')}</p>
         <SharingControls {...draft} departments={departments} onChange={(value) => setDraft({ ...draft, ...value })} />

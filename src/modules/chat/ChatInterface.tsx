@@ -3,12 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { ArrowDownIcon } from 'lucide-react';
 
 import { useTasksSettings } from '@/modules/task-master';
-import { usePaletteOpsRegister } from '@/modules/command-palette';
 import { useWebSocket } from '@/shared/context/WebSocketContext';
 import PermissionContext from '@/modules/chat/context/PermissionContext';
 import { MarkdownWorkspaceContext } from '@/modules/chat/context/MarkdownWorkspaceContext';
 import { TranscriptSessionContext } from '@/modules/chat/context/TranscriptSessionContext';
+import { TranscriptRevealContext } from '@/modules/chat/context/TranscriptRevealContext';
 import { api } from '@/shared/api';
+import { ESCAPE_LAYER_SELECTOR } from '@/shared/constants';
 import type {
   ChatMessage,
   Project,
@@ -150,6 +151,7 @@ function ChatInterface({
     visibleMessages,
     loadEarlierMessages,
     revealMessage,
+    revealRequest,
     loadAllMessages,
     loadFullTranscript,
     allMessagesLoaded,
@@ -193,7 +195,6 @@ function ChatInterface({
     textareaRef,
     inputHighlightRef,
     isTextareaExpanded,
-    slashCommandsCount,
     filteredCommands,
     frequentCommands,
     commandQuery,
@@ -201,7 +202,6 @@ function ChatInterface({
     selectedCommandIndex,
     resetCommandMenuState,
     handleCommandSelect,
-    handleToggleCommandMenu,
     showFileDropdown,
     filteredFiles,
     selectedFileIndex,
@@ -225,15 +225,11 @@ function ChatInterface({
     handleTextareaClick,
     handleTextareaInput,
     syncInputOverlayScroll,
-    handleClearInput,
     handleAbortSession,
     handlePermissionDecision,
     handleGrantToolPermission,
-    handleInputFocusChange,
-    isInputFocused,
     commandModalPayload,
     closeCommandModal,
-    showCostModal,
     editingAnchorId,
     beginEditMessage,
     cancelEditMessage,
@@ -309,27 +305,6 @@ function ChatInterface({
     sessionStore,
   });
 
-  // Lets other modules (the quick settings Commands tab) hand text to the
-  // composer: append it after a separating space, then focus the textarea with
-  // the caret at the end once React has rendered the new value.
-  const insertComposerText = useCallback((text: string) => {
-    setInput((previous) => {
-      const separator = previous && !/\s$/.test(previous) ? ' ' : '';
-      return `${previous}${separator}${text}`;
-    });
-    window.requestAnimationFrame(() => {
-      const textarea = textareaRef.current;
-      if (!textarea) {
-        return;
-      }
-      textarea.focus();
-      const caretPosition = textarea.value.length;
-      textarea.setSelectionRange(caretPosition, caretPosition);
-    });
-  }, [setInput, textareaRef]);
-
-  usePaletteOpsRegister({ insertComposerText });
-
   useEffect(() => {
     if (!canAbortSession) {
       return;
@@ -337,6 +312,14 @@ function ChatInterface({
 
     const handleGlobalEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.repeat || event.defaultPrevented) {
+        return;
+      }
+      // An open menu or dialog, or another text field (a title being renamed), owns this Escape.
+      const focused = document.activeElement;
+      if (
+        document.querySelector(ESCAPE_LAYER_SELECTOR)
+        || (focused instanceof HTMLElement && focused !== textareaRef.current && focused.matches('input, textarea, select, [contenteditable="true"]'))
+      ) {
         return;
       }
 
@@ -348,7 +331,7 @@ function ChatInterface({
     return () => {
       document.removeEventListener('keydown', handleGlobalEscape, { capture: true });
     };
-  }, [canAbortSession, handleAbortSession]);
+  }, [canAbortSession, handleAbortSession, textareaRef]);
 
   useEffect(() => {
     return () => {
@@ -465,62 +448,64 @@ function ChatInterface({
       <div className="flex h-full min-h-0 flex-col">
         <MarkdownWorkspaceContext.Provider value={markdownWorkspaceValue}>
           <TranscriptSessionContext.Provider value={transcriptSessionValue}>
-            <ChatMessagesPane
-              scrollContainerRef={scrollContainerRef}
-              // Not redundant with the `scroll` listener. A first page is 20 rows,
-              // tool results fold into their calls, and the "load earlier" link is
-              // hidden while more pages exist — so a short transcript is often not
-              // scrollable at all and never emits `scroll`. Wheel and touch are
-              // then the only way to reach the top pager or the "load all" overlay.
-              onWheel={handleScroll}
-              onTouchMove={handleScroll}
-              isLoadingSessionMessages={isLoadingSessionMessages}
-              isProcessing={isProcessing}
-              hasActivityIndicator={hasActivityIndicator}
-              chatMessages={chatMessages}
-              selectedSession={selectedSession}
-              currentSessionId={currentSessionId}
-              provider={provider}
-              setProvider={setProvider}
-              textareaRef={textareaRef}
-              providerModels={providerModels}
-              setProviderModel={setStoredProviderModel}
-              providerModelCatalog={providerModelCatalog}
-              providerModelActions={providerModelActions}
-              providerModelsLoading={providerModelsLoading}
-              tasksEnabled={tasksEnabled}
-              isTaskMasterInstalled={isTaskMasterInstalled}
-              onShowAllTasks={onShowAllTasks}
-              setInput={setInput}
-              isLoadingMoreMessages={isLoadingMoreMessages}
-              hasMoreMessages={hasMoreMessages}
-              totalMessages={totalMessages}
-              sessionMessagesCount={chatMessages.length}
-              visibleMessageCount={visibleMessageCount}
-              visibleMessages={visibleMessages}
-              loadEarlierMessages={loadEarlierMessages}
-              revealMessage={revealMessage}
-              backgroundTasks={sessionActivity?.tasks}
-              sendMessage={sendMessage}
-              loadAllMessages={loadAllMessages}
-              allMessagesLoaded={allMessagesLoaded}
-              isLoadingAllMessages={isLoadingAllMessages}
-              loadAllJustFinished={loadAllJustFinished}
-              showLoadAllOverlay={showLoadAllOverlay}
-              createDiff={createDiff}
-              onFileOpen={onFileOpen}
-              onShowSettings={onShowSettings}
-              onGrantToolPermission={handleGrantToolPermission}
-              showRawParameters={showRawParameters}
-              showThinking={showThinking}
-              selectedProject={selectedProject}
-              // Editing replaces the turn and everything after it, so it is only
-              // offered when the session is idle — a half-truncated transcript with
-              // a live stream writing into it is not recoverable.
-              onEditMessage={supportsMessageEditing && !isProcessing ? beginEditMessage : undefined}
-              onForkFromMessage={supportsSessionForking ? handleForkFromMessage : undefined}
-              onLoadFullTranscript={loadFullTranscript}
-            />
+            <TranscriptRevealContext.Provider value={revealRequest}>
+              <ChatMessagesPane
+                scrollContainerRef={scrollContainerRef}
+                // Not redundant with the `scroll` listener. A first page is 20 rows,
+                // tool results fold into their calls, and the "load earlier" link is
+                // hidden while more pages exist — so a short transcript is often not
+                // scrollable at all and never emits `scroll`. Wheel and touch are
+                // then the only way to reach the top pager or the "load all" overlay.
+                onWheel={handleScroll}
+                onTouchMove={handleScroll}
+                isLoadingSessionMessages={isLoadingSessionMessages}
+                isProcessing={isProcessing}
+                hasActivityIndicator={hasActivityIndicator}
+                chatMessages={chatMessages}
+                selectedSession={selectedSession}
+                currentSessionId={currentSessionId}
+                provider={provider}
+                setProvider={setProvider}
+                textareaRef={textareaRef}
+                providerModels={providerModels}
+                setProviderModel={setStoredProviderModel}
+                providerModelCatalog={providerModelCatalog}
+                providerModelActions={providerModelActions}
+                providerModelsLoading={providerModelsLoading}
+                tasksEnabled={tasksEnabled}
+                isTaskMasterInstalled={isTaskMasterInstalled}
+                onShowAllTasks={onShowAllTasks}
+                setInput={setInput}
+                isLoadingMoreMessages={isLoadingMoreMessages}
+                hasMoreMessages={hasMoreMessages}
+                totalMessages={totalMessages}
+                sessionMessagesCount={chatMessages.length}
+                visibleMessageCount={visibleMessageCount}
+                visibleMessages={visibleMessages}
+                loadEarlierMessages={loadEarlierMessages}
+                revealMessage={revealMessage}
+                backgroundTasks={sessionActivity?.tasks}
+                sendMessage={sendMessage}
+                loadAllMessages={loadAllMessages}
+                allMessagesLoaded={allMessagesLoaded}
+                isLoadingAllMessages={isLoadingAllMessages}
+                loadAllJustFinished={loadAllJustFinished}
+                showLoadAllOverlay={showLoadAllOverlay}
+                createDiff={createDiff}
+                onFileOpen={onFileOpen}
+                onShowSettings={onShowSettings}
+                onGrantToolPermission={handleGrantToolPermission}
+                showRawParameters={showRawParameters}
+                showThinking={showThinking}
+                selectedProject={selectedProject}
+                // Editing replaces the turn and everything after it, so it is only
+                // offered when the session is idle — a half-truncated transcript with
+                // a live stream writing into it is not recoverable.
+                onEditMessage={supportsMessageEditing && !isProcessing ? beginEditMessage : undefined}
+                onForkFromMessage={supportsSessionForking ? handleForkFromMessage : undefined}
+                onLoadFullTranscript={loadFullTranscript}
+              />
+            </TranscriptRevealContext.Provider>
           </TranscriptSessionContext.Provider>
         </MarkdownWorkspaceContext.Provider>
 
@@ -557,17 +542,11 @@ function ChatInterface({
           availableModelOptions={currentProviderModelOptions}
           onSelectModel={handleSelectComposerModel}
           modelsLoading={providerModelsLoading}
-          tokenBudget={tokenBudget}
-          onShowTokenUsage={showCostModal}
           isEditingSentMessage={Boolean(editingAnchorId)}
           onCancelEditMessage={cancelEditMessage}
           scheduledMessages={scheduledMessages}
           onScheduleMessage={handleScheduleMessage}
           onCancelScheduledMessage={cancelScheduledMessage}
-          slashCommandsCount={slashCommandsCount}
-          onToggleCommandMenu={handleToggleCommandMenu}
-          hasInput={Boolean(input.trim())}
-          onClearInput={handleClearInput}
           onSubmit={handleSubmit}
           isDragActive={isDragActive}
           queuedDraft={queuedDraft}
@@ -604,11 +583,8 @@ function ChatInterface({
           onTextareaPaste={handlePaste}
           onTextareaScrollSync={syncInputOverlayScroll}
           onTextareaInput={handleTextareaInput}
-          isInputFocused={isInputFocused}
-          onInputFocusChange={handleInputFocusChange}
           placeholder={t('input.placeholder', { provider: selectedProviderLabel })}
           isTextareaExpanded={isTextareaExpanded}
-          sendByCtrlEnter={sendByCtrlEnter}
         />
         </div>
       </div>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { MutableRefObject } from 'react';
 
 import { api } from '@/shared/api';
-import type { MarkSessionIdle, SessionActivityMap,Project,ProjectSession,LLMProvider,NormalizedMessage,ChatMessage,DiffCalculator } from '@/shared/types';
+import type { MarkSessionIdle, SessionActivityMap,Project,ProjectSession,LLMProvider,NormalizedMessage,ChatMessage,DiffCalculator,TranscriptRevealRequest } from '@/shared/types';
 import type { SessionStore } from '@/modules/chat/hooks/useSessionStore';
 import { SESSION_MESSAGES_PAGE_SIZE } from '@/modules/chat/utils/sessionMessagePagination';
 import { createMessageHistoryRefreshCoordinator } from '@/modules/chat/utils/messageHistoryRefreshCoordinator';
@@ -212,6 +212,9 @@ export function useChatSessionState({
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const [tokenBudget, setTokenBudget] = useState<Record<string, unknown> | null>(null);
   const [visibleMessageCount, setVisibleMessageCount] = useState(INITIAL_VISIBLE_MESSAGES);
+  // The latest reveal request; a collapsed tool group holding its row opens so
+  // the reveal has a row of its own to land on.
+  const [revealRequest, setRevealRequest] = useState<TranscriptRevealRequest | null>(null);
   const [allMessagesLoaded, setAllMessagesLoaded] = useState(false);
   const [isLoadingAllMessages, setIsLoadingAllMessages] = useState(false);
   const [loadAllJustFinished, setLoadAllJustFinished] = useState(false);
@@ -1119,6 +1122,7 @@ export function useChatSessionState({
   // then scroll to the row's wrapper, which is in the DOM as soon as the row
   // is inside the window, mounted or not.
   const revealMessage = useCallback((message: ChatMessage) => {
+    setRevealRequest({ message });
     const index = chatMessages.indexOf(message);
     if (index >= 0) {
       setVisibleMessageCount((prev) => visibleCountToReveal(chatMessages.length, index, prev));
@@ -1145,6 +1149,7 @@ export function useChatSessionState({
 
   return {
     chatMessages,
+    revealRequest,
     addMessage,
     sessionActivity,
     isProcessing,

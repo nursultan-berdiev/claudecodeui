@@ -2,12 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react';
 
 import { safeLocalStorage } from '@/modules/chat/utils/chatStorage';
-import { useProjectSlashCommands } from '@/shared/hooks/useProjectSlashCommands';
+import { useProjectSlashCommands } from '@/modules/chat/hooks/useProjectSlashCommands';
 import type { LLMProvider, Project, SlashCommand } from '@/shared/types';
-import { isSkillCommand } from '@/shared/utils';
+
+/**
+ * Whether a slash command is a provider skill (as opposed to a built-in or a
+ * custom `.md` command). Skills are mapped with `type: 'skill'`; the metadata
+ * check catches entries that only carry the skill marker there.
+ */
+const isSkillCommand = (command: SlashCommand): boolean =>
+  command.type === 'skill' || command.metadata?.type === 'skill';
 
 const COMMAND_QUERY_DEBOUNCE_MS = 150;
-
 
 type UseSlashCommandsOptions = {
   selectedProject: Project | null;
@@ -243,19 +249,6 @@ export function useSlashCommands({
     [selectedProject, trackCommandUsage, insertCommandIntoInput, executeNonSkillCommand],
   );
 
-  const handleToggleCommandMenu = useCallback(() => {
-    const isOpening = !showCommandMenu;
-    setShowCommandMenu(isOpening);
-    setCommandQuery('');
-    setSelectedCommandIndex(-1);
-
-    if (isOpening) {
-      setFilteredCommands(slashCommands);
-    }
-
-    textareaRef.current?.focus();
-  }, [showCommandMenu, slashCommands, textareaRef]);
-
   const handleCommandInputChange = useCallback(
     (newValue: string, cursorPos: number) => {
       if (!newValue.trim()) {
@@ -399,7 +392,6 @@ export function useSlashCommands({
     selectedCommandIndex,
     resetCommandMenuState,
     handleCommandSelect,
-    handleToggleCommandMenu,
     handleCommandInputChange,
     handleCommandMenuKeyDown,
   };

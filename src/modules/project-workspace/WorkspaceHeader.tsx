@@ -1,18 +1,16 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { ArrowLeft } from 'lucide-react';
+import type { Dispatch, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import type { AppTab, Project, ProjectSession } from '@/shared/types';
-import { cn } from '@/shared/utils';
+import type { AppTab, ProjectSession } from '@/shared/types';
 import MobileMenuButton from '@/modules/project-workspace/MobileMenuButton';
-import WorkspaceTabs from '@/modules/project-workspace/WorkspaceTabs';
+import WorkspaceToolsMenu from '@/modules/project-workspace/WorkspaceToolsMenu';
 import WorkspaceTitle from '@/modules/project-workspace/WorkspaceTitle';
 import { ChatSharing } from '@/modules/company';
 
 type WorkspaceHeaderProps = {
   activeTab: AppTab;
   setActiveTab: Dispatch<SetStateAction<AppTab>>;
-  selectedProject: Project;
   selectedSession: ProjectSession | null;
   shouldShowTasksTab: boolean;
   shouldShowBrowserTab: boolean;
@@ -22,11 +20,13 @@ type WorkspaceHeaderProps = {
   onRenameSession: (sessionId: string, summary: string) => Promise<boolean>;
 };
 
-/** Rendered by WorkspaceMain to show the workspace title alongside the scrollable tab bar. */
+/**
+ * Rendered by WorkspaceMain as the single quiet row above the chat: the chat
+ * title, its sharing state and a "…" menu with the other workspace views.
+ */
 export default function WorkspaceHeader({
   activeTab,
   setActiveTab,
-  selectedProject,
   selectedSession,
   shouldShowTasksTab,
   shouldShowBrowserTab,
@@ -35,128 +35,33 @@ export default function WorkspaceHeader({
   onRenameSession,
 }: WorkspaceHeaderProps) {
   const { t } = useTranslation();
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-  const hasOverflow = canScrollLeft || canScrollRight;
-
-  const updateScrollState = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 2);
-    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 2);
-  }, []);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    updateScrollState();
-
-    const observer = new ResizeObserver(updateScrollState);
-    observer.observe(el);
-    if (el.firstElementChild) observer.observe(el.firstElementChild);
-
-    return () => observer.disconnect();
-  }, [updateScrollState]);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    const handleWheel = (event: WheelEvent) => {
-      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-
-      const maxScrollLeft = el.scrollWidth - el.clientWidth;
-      const canMove = event.deltaY < 0 ? el.scrollLeft > 0 : el.scrollLeft < maxScrollLeft;
-      if (!canMove) return;
-
-      event.preventDefault();
-      const lineMultiplier = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 20 : 1;
-      el.scrollBy({ left: event.deltaY * lineMultiplier, behavior: 'auto' });
-    };
-
-    el.addEventListener('wheel', handleWheel, { passive: false });
-    return () => el.removeEventListener('wheel', handleWheel);
-  }, []);
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => {
-      const activeTabElement = scrollRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
-      activeTabElement?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
-      updateScrollState();
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [activeTab, updateScrollState]);
-
-  const scrollTabs = (direction: -1 | 1) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollBy({ left: direction * Math.max(180, el.clientWidth * 0.65), behavior: 'smooth' });
-  };
 
   return (
-    <header className="pwa-header-safe flex-shrink-0 border-b border-border/60 bg-background/95 px-3 py-1.5 backdrop-blur-sm sm:px-4 sm:py-2">
-      <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-        <div className="flex min-w-0 items-center gap-2 sm:max-w-[min(34%,24rem)] sm:flex-[1_1_18rem]">
-          {isMobile && <MobileMenuButton onMenuClick={onMenuClick} />}
-          <WorkspaceTitle
-            activeTab={activeTab}
-            selectedProject={selectedProject}
-            selectedSession={selectedSession}
-            shouldShowTasksTab={shouldShowTasksTab}
-            onRenameSession={onRenameSession}
-          />
-          {selectedSession && <ChatSharing sessionId={selectedSession.id} />}
-        </div>
-
-        <div className="-mx-3 min-w-0 sm:mx-0 sm:flex-1">
-          <div className="relative ml-auto w-fit max-w-full">
-            {canScrollLeft && (
-              <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-background via-background/90 to-transparent" />
-            )}
-            <div
-              ref={scrollRef}
-              onScroll={updateScrollState}
-              className={cn(
-                'scrollbar-hide max-w-full scroll-smooth overflow-x-auto overscroll-x-contain px-3 [-webkit-overflow-scrolling:touch]',
-                hasOverflow ? 'sm:px-9' : 'sm:pl-3 sm:pr-0',
-              )}
-            >
-              <WorkspaceTabs
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-                shouldShowTasksTab={shouldShowTasksTab}
-                shouldShowBrowserTab={shouldShowBrowserTab}
-              />
-            </div>
-            {canScrollRight && (
-              <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-background via-background/90 to-transparent" />
-            )}
-
-            {canScrollLeft && (
-              <button
-                type="button"
-                onClick={() => scrollTabs(-1)}
-                aria-label={t('navigation.scrollTabsLeft', { defaultValue: 'Scroll tabs left' })}
-                className="absolute left-1 top-1/2 z-20 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md border border-border/70 bg-background/95 text-muted-foreground shadow-sm outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60 sm:flex"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-            )}
-            {canScrollRight && (
-              <button
-                type="button"
-                onClick={() => scrollTabs(1)}
-                aria-label={t('navigation.scrollTabsRight', { defaultValue: 'Scroll tabs right' })}
-                className="absolute right-1 top-1/2 z-20 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md border border-border/70 bg-background/95 text-muted-foreground shadow-sm outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-primary/60 sm:flex"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+    <header className="pwa-header-safe flex min-h-[52px] flex-shrink-0 items-center gap-1 bg-background px-2 py-2 sm:gap-2 sm:px-4">
+      {isMobile && <MobileMenuButton onMenuClick={onMenuClick} />}
+      {activeTab !== 'chat' && (
+        <button
+          type="button"
+          onClick={() => setActiveTab('chat')}
+          className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {t('tabs.chat')}
+        </button>
+      )}
+      <WorkspaceTitle
+        activeTab={activeTab}
+        selectedSession={selectedSession}
+        shouldShowTasksTab={shouldShowTasksTab}
+        onRenameSession={onRenameSession}
+      />
+      {activeTab === 'chat' && selectedSession && <ChatSharing sessionId={selectedSession.id} />}
+      <WorkspaceToolsMenu
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        shouldShowTasksTab={shouldShowTasksTab}
+        shouldShowBrowserTab={shouldShowBrowserTab}
+      />
     </header>
   );
 }

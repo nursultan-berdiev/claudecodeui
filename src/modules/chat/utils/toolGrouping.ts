@@ -1,10 +1,19 @@
 import type { ChatMessage, ToolGroupItem } from '@/shared/types';
 import { getToolConfig } from '@/modules/chat/tools/configs/toolConfigs';
 
-export const TOOL_GROUP_THRESHOLD = 2;
+// Even a single action folds into a summary line: a threshold of 2 rendered the
+// first call as a full card and remounted it collapsed when the second arrived.
+export const TOOL_GROUP_THRESHOLD = 1;
 
 /** How many of a group's tool inputs the collapsed summary line spells out. */
 const PREVIEWED_TOOL_COUNT = 2;
+
+/**
+ * Tools that stay visible as their own rows. The plan card carries the only
+ * Build/Revise buttons for a pending plan, the question card records the user's
+ * answer, and the checklist title says what the agent is doing right now.
+ */
+const UNGROUPED_TOOL_NAMES = new Set(['Workflow', 'ExitPlanMode', 'exit_plan_mode', 'AskUserQuestion', 'TodoWrite']);
 
 
 export type MessageListItem = ChatMessage | ToolGroupItem;
@@ -43,10 +52,11 @@ function getToolGroup(run: GroupableToolRun, showThinking: boolean): ToolGroupIt
 
   const group: ToolGroupItem = {
     _isGroup: true,
-    toolName: first.toolName,
     messages: run,
     timestamp: first.timestamp,
-    preview: buildGroupPreview(run),
+    ...buildGroupPreview(run),
+    runningCount: run.filter(isRunningTool).length,
+    failedCount: run.filter(isFailedTool).length,
   };
   toolGroupCache.set(first, { run, showThinking, group });
   return group;
@@ -59,7 +69,25 @@ export function isToolGroupItem(item: MessageListItem): item is ToolGroupItem {
 // An agent's or a workflow's row is its whole card — status, timeline, result —
 // so it never folds into a collapsed run with its neighbours.
 function isGroupableToolMessage(message: ChatMessage): message is ChatMessage & { toolName: string } {
-  return Boolean(message.isToolUse && message.toolName && !message.isSubagentContainer && message.toolName !== 'Workflow');
+  return Boolean(
+    message.isToolUse
+    && message.toolName
+    && !message.isSubagentContainer
+    && !UNGROUPED_TOOL_NAMES.has(message.toolName),
+  );
+}
+
+// Same reading as ToolRenderer's row status: no result yet means still running,
+// unless the provider already reported the call as finished or failed.
+function isRunningTool(message: ChatMessage): boolean {
+  if (message.toolStatus === 'in_progress') {
+    return true;
+  }
+  return !message.toolResult && message.toolStatus !== 'failed' && message.toolStatus !== 'completed';
+}
+
+function isFailedTool(message: ChatMessage): boolean {
+  return message.toolStatus === 'failed' || Boolean(message.toolResult?.isError);
 }
 
 // Messages that render nothing (e.g. reasoning hidden when showThinking is off)
@@ -91,33 +119,26 @@ function getToolInputPreview(message: ChatMessage): string {
 }
 
 /**
- * Builds the collapsed group's summary line.
+ * Builds the collapsed group's summary: the first inputs it names and how many
+ * actions it leaves unnamed. The component words it, so the text can be translated.
  *
  * Computed here rather than in the component so it happens once per grouping
  * pass instead of once per group render, and skipped entirely for runs the tool
  * group cache above can reuse — a run's preview depends on the whole run, which
  * is exactly what that cache compares.
  */
-function buildGroupPreview(messages: ChatMessage[]): string {
-  const named = messages
+function buildGroupPreview(messages: ChatMessage[]): Pick<ToolGroupItem, 'previewNames' | 'previewExtraCount'> {
+  const previewNames = messages
     .slice(0, PREVIEWED_TOOL_COUNT)
     .map(getToolInputPreview)
     .filter(Boolean);
 
-  const previewText = named.join(', ');
   // Subtracted from the previews actually printed, not from the two slots the
   // line reserves, so that named + extraCount === messages.length for every
   // input. A tool whose input yields no text — a Read with no file_path, an
   // input still arriving as partial JSON — is genuinely not named, so it
-  // belongs in the remainder. Counting slots instead makes a group of three
-  // whose first preview is empty render "/b.ts, +1 more" beside an x3 badge.
-  const extraCount = messages.length - named.length;
-
-  if (!previewText) {
-    return extraCount > 0 ? `+${extraCount} more` : '';
-  }
-
-  return extraCount > 0 ? `${previewText}, +${extraCount} more` : previewText;
+  // belongs in the remainder.
+  return { previewNames, previewExtraCount: messages.length - previewNames.length };
 }
 
 export function groupConsecutiveTools(
@@ -148,7 +169,7 @@ export function groupConsecutiveTools(
         continue;
       }
 
-      if (isGroupableToolMessage(candidate) && candidate.toolName === message.toolName) {
+      if (isGroupableToolMessage(candidate)) {
         run.push(candidate);
         nextIndex += 1;
         continue;

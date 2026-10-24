@@ -24,7 +24,8 @@
     "git": "Система контроля версий",
     "tasks": "Задачи",
     "browser": "Browser",
-    "computer": "Компьютер"
+    "computer": "Компьютер",
+    "views": "Инструменты"
   },
   "status": {
     "loading": "Загрузка...",
@@ -95,7 +96,9 @@
     "createProjectDesktop": "Создайте новый проект, нажав на значок папки на боковой панели",
     "newSession": "Новый сеанс",
     "untitledSession": "Безымянный сеанс",
-    "projectFiles": "Файлы проекта"
+    "projectFiles": "Файлы проекта",
+    "greeting": "Чем могу помочь?",
+    "startChatHint": "Начните новый чат или выберите чат слева."
   },
   "fileTree": {
     "loading": "Загрузка файлов...",

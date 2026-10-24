@@ -46,12 +46,12 @@ const renderMessage = (isStreaming: boolean) => (
 test('a reply keeps its DOM when it stops streaming', () => {
   const { container, rerender } = render(renderMessage(true));
 
-  const blocksWhileStreaming = [...container.querySelectorAll('[class*="mb-2"]')];
+  const blocksWhileStreaming = [...container.querySelectorAll('[class*="mb-4"]')];
   assert.ok(blocksWhileStreaming.length > 0, 'expected the reply to have rendered blocks');
 
   rerender(renderMessage(false));
 
-  const blocksAfter = [...container.querySelectorAll('[class*="mb-2"]')];
+  const blocksAfter = [...container.querySelectorAll('[class*="mb-4"]')];
   assert.deepEqual(
     blocksAfter.map((node) => blocksWhileStreaming.indexOf(node) !== -1),
     blocksAfter.map(() => true),

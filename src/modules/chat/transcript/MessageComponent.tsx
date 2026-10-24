@@ -5,7 +5,6 @@ import { GitBranchIcon, PencilIcon } from 'lucide-react';
 import type { ChatMessage, ClaudePermissionSuggestion, PermissionGrantResult, LLMProvider,DiffLine,Project } from '@/shared/types';
 import { formatUsageLimitText, stripProposedPlanEnvelope } from '@/modules/chat/utils/chatFormatting';
 import { ToolRenderer, ToolErrorDisplay, SubagentPanel, WorkflowPanel, shouldHideToolResult } from '@/modules/chat/tools';
-import { LLMProviderLogo } from '@/shared/ui';
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/modules/chat/transcript/Reasoning';
 import ChatMessageImages from '@/modules/chat/transcript/ChatMessageImages';
 import ChatMessageFiles from '@/modules/chat/transcript/ChatMessageFiles';
@@ -42,6 +41,12 @@ type MessageComponentProps = {
 };
 
 const COPY_HIDDEN_TOOL_NAMES = new Set(['Bash', 'Edit', 'Write', 'ApplyPatch']);
+
+/** Typography for every markdown body in a transcript row: plain 16px text, ChatGPT-style. */
+const MESSAGE_PROSE_CLASS = 'prose prose-neutral max-w-none text-base leading-7 dark:prose-invert';
+
+/** Message actions appear on hover; an exported document has no hover, so there they always show. */
+const HOVER_REVEAL_CLASS = 'opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100';
 
 /**
  * Rendered by chat's ChatMessagesPane and ToolGroupContainer to draw one
@@ -95,71 +100,60 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
     <div
       ref={messageRef}
       data-message-timestamp={message.timestamp || undefined}
-      className={`chat-message ${message.type} ${isGrouped ? 'grouped' : ''} ${message.type === 'user' ? 'flex justify-end px-3 sm:px-0' : 'px-3 sm:px-0'}`}
+      className={`chat-message group ${message.type} ${isGrouped ? 'grouped' : ''} ${message.type === 'user' ? 'flex justify-end px-3 sm:px-0' : 'px-3 sm:px-0'}`}
     >
       {message.type === 'user' ? (
-        /* User turn on the right: claude.ai-style attachment cards above the bubble */
-        <div className="flex w-full items-end space-x-0 sm:w-auto sm:max-w-[85%] sm:space-x-3 md:max-w-md lg:max-w-lg xl:max-w-xl">
-          <div className="flex min-w-0 flex-1 flex-col items-end gap-2 sm:flex-initial">
-            {message.images && message.images.length > 0 && (
-              <ChatMessageImages
-                images={message.images}
-                projectId={selectedProject?.projectId}
-              />
-            )}
-            {message.files && message.files.length > 0 && (
-              <ChatMessageFiles files={message.files} />
-            )}
-            {userCopyContent.trim().length > 0 || (!message.images?.length && !message.files?.length) ? (
-              <div className="group max-w-full rounded-2xl rounded-br-md border border-border/60 bg-muted/60 px-3 py-2 text-foreground shadow-sm dark:bg-gray-800/60 sm:px-4">
-                <div dir="auto" className="break-words font-serif text-sm">
-                  <Markdown
-                    breaks
-                    className="prose prose-sm max-w-none font-serif dark:prose-invert"
+        /* User turn on the right: attachment cards above a soft bubble, actions below it on hover */
+        <div className="group flex w-full min-w-0 flex-col items-end gap-1 sm:max-w-[70%]">
+          {message.images && message.images.length > 0 && (
+            <ChatMessageImages
+              images={message.images}
+              projectId={selectedProject?.projectId}
+            />
+          )}
+          {message.files && message.files.length > 0 && (
+            <ChatMessageFiles files={message.files} />
+          )}
+          {(userCopyContent.trim().length > 0 || (!message.images?.length && !message.files?.length)) && (
+            <>
+              <div
+                dir="auto"
+                title={formattedTime}
+                className="max-w-full break-words rounded-3xl bg-muted px-4 py-2.5 text-foreground sm:px-5"
+              >
+                <Markdown breaks className={MESSAGE_PROSE_CLASS}>
+                  {message.content}
+                </Markdown>
+              </div>
+              <div className={`flex items-center justify-end gap-1 text-xs text-muted-foreground ${isExporting ? '' : HOVER_REVEAL_CLASS}`}>
+                {onEditMessage && message.transcriptAnchorId && (
+                  <button
+                    type="button"
+                    onClick={() => onEditMessage(message)}
+                    title={t('message.editAndResend')}
+                    aria-label={t('message.editAndResend')}
+                    className="rounded-md p-1.5 hover:bg-muted hover:text-foreground"
                   >
-                    {message.content}
-                  </Markdown>
-                </div>
-                <div className="mt-1 flex items-center justify-end gap-1 text-xs text-muted-foreground">
-                  {onEditMessage && message.transcriptAnchorId && (
-                    <button
-                      type="button"
-                      onClick={() => onEditMessage(message)}
-                      title={t('message.editAndResend')}
-                      aria-label={t('message.editAndResend')}
-                      className="rounded p-1 opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover:opacity-100"
-                    >
-                      <PencilIcon className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  {onForkFromMessage && message.transcriptAnchorId && (
-                    <button
-                      type="button"
-                      onClick={() => onForkFromMessage(message)}
-                      title={t('message.forkFromHere')}
-                      aria-label={t('message.forkFromHere')}
-                      className="rounded p-1 opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover:opacity-100"
-                    >
-                      <GitBranchIcon className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  {shouldShowUserCopyControl && (
-                    <MessageCopyControl content={userCopyContent} messageType="user" />
-                  )}
-                  <span>{formattedTime}</span>
-                </div>
+                    <PencilIcon className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {onForkFromMessage && message.transcriptAnchorId && (
+                  <button
+                    type="button"
+                    onClick={() => onForkFromMessage(message)}
+                    title={t('message.forkFromHere')}
+                    aria-label={t('message.forkFromHere')}
+                    className="rounded-md p-1.5 hover:bg-muted hover:text-foreground"
+                  >
+                    <GitBranchIcon className="h-3.5 w-3.5" />
+                  </button>
+                )}
+                {shouldShowUserCopyControl && (
+                  <MessageCopyControl content={userCopyContent} messageType="user" />
+                )}
+                {isExporting && <span>{formattedTime}</span>}
               </div>
-            ) : (
-              /* Attachment-only turn: no text bubble, but the timestamp still shows */
-              <div className="flex items-center justify-end gap-1 text-xs text-muted-foreground">
-                <span>{formattedTime}</span>
-              </div>
-            )}
-          </div>
-          {!isGrouped && (
-            <div className="hidden h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm text-white sm:flex">
-              U
-            </div>
+            </>
           )}
         </div>
       ) : message.compact ? (
@@ -175,17 +169,17 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
                     : 'bg-gray-400 dark:bg-gray-500'
               }`}
             />
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+            <span className="text-xs text-muted-foreground">
               {message.content || t('chat:misc.compacted', 'Compacted')}
             </span>
           </div>
           {message.compactSummary && (
             <details className="ml-3.5 mt-0.5">
-              <summary className="cursor-pointer text-xs text-gray-500 hover:text-foreground dark:text-gray-400">
+              <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
                 {t('chat:misc.compactionSummary', 'full summary')}
               </summary>
               <div className="mt-1">
-                <Markdown className="prose prose-sm prose-gray max-w-none font-serif dark:prose-invert">
+                <Markdown className={MESSAGE_PROSE_CLASS}>
                   {message.compactSummary}
                 </Markdown>
               </div>
@@ -197,43 +191,12 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
         <div className="w-full">
           <div className="flex items-center gap-2 py-0.5">
             <span className={`inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full ${message.taskNotificationStatus === 'completed' ? 'bg-green-400 dark:bg-green-500' : 'bg-amber-400 dark:bg-amber-500'}`} />
-            <span className="text-xs text-gray-500 dark:text-gray-400">{message.content}</span>
+            <span className="text-xs text-muted-foreground">{message.content}</span>
           </div>
         </div>
       ) : (
-        /* Claude/Error/Tool messages on the left */
-        <div className="w-full">
-          {!isGrouped && (
-            <div className="mb-2 flex items-center space-x-3">
-              {message.type === 'error' ? (
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-red-600 text-sm text-white">
-                  !
-                </div>
-              ) : message.type === 'tool' ? (
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gray-600 text-sm text-white dark:bg-gray-700">
-                  🔧
-                </div>
-              ) : (
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full p-1 text-sm text-foreground">
-                  <LLMProviderLogo provider={provider} className="h-full w-full" />
-                </div>
-              )}
-              <div className="text-sm font-medium text-gray-900 dark:text-white">
-                {message.type === 'error'
-                  ? t('messageTypes.error')
-                  : message.type === 'tool'
-                    ? t('messageTypes.tool')
-                    : (provider === 'cursor'
-                        ? t('messageTypes.cursor')
-                        : provider === 'codex'
-                          ? t('messageTypes.codex')
-                          : provider === 'opencode'
-                              ? t('messageTypes.opencode', { defaultValue: 'OpenCode' })
-                              : t('messageTypes.claude'))}
-              </div>
-            </div>
-          )}
-
+        /* Assistant, tool and error rows: no avatar or name, the text stands on its own */
+        <div className={message.type === 'error' ? 'w-full rounded-2xl border border-red-500/30 bg-red-500/5 px-4 py-3' : 'w-full'}>
           <div className="w-full">
 
             {message.isToolUse && message.toolName === 'Workflow' ? (
@@ -267,13 +230,11 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
               </div>
             ) : message.isToolUse ? (
               <>
-                <div className="flex flex-col">
-                  <div className="flex flex-col">
-                    <Markdown className="prose prose-sm max-w-none font-serif dark:prose-invert">
-                      {String(message.displayText || '')}
-                    </Markdown>
-                  </div>
-                </div>
+                {message.displayText && (
+                  <Markdown className={MESSAGE_PROSE_CLASS}>
+                    {String(message.displayText)}
+                  </Markdown>
+                )}
 
                 {message.toolInput && (
                   // Bash draws its output inside this row rather than in the
@@ -328,7 +289,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
               <Reasoning defaultOpen={isExporting}>
                 <ReasoningTrigger />
                 <ReasoningContent>
-                  <Markdown className="prose prose-sm prose-gray max-w-none font-serif dark:prose-invert">
+                  <Markdown className={MESSAGE_PROSE_CLASS}>
                     {message.content}
                   </Markdown>
                   {!isExporting && (
@@ -339,7 +300,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
                 </ReasoningContent>
               </Reasoning>
             ) : (
-              <div dir="auto" className="text-sm text-gray-700 dark:text-gray-300">
+              <div dir="auto" className="text-base text-foreground">
                 {/* Reasoning accordion */}
                 {showThinking && message.reasoning && (
                   <Reasoning className="mb-3" defaultOpen={false}>
@@ -392,7 +353,7 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
                     <StreamingMarkdown
                       content={content}
                       isStreaming={Boolean(message.isStreaming)}
-                      className="prose prose-sm prose-gray max-w-none font-serif dark:prose-invert"
+                      className={MESSAGE_PROSE_CLASS}
                     />
                   ) : (
                     <div className="whitespace-pre-wrap">
@@ -414,8 +375,12 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
               <MemoryCitations citations={message.memoryCitations} />
             )}
 
-            {(shouldShowAssistantCopyControl || !isGrouped) && (
-              <div className="mt-1 flex w-full items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500">
+            {/* Text replies only: a tool row's footer would repeat the model on every action. */}
+            {message.type === 'assistant' && !message.isToolUse && !message.isThinking && (
+              <div
+                title={formattedTime}
+                className={`mt-1 flex w-full items-center gap-2 text-[11px] text-muted-foreground ${isExporting ? '' : HOVER_REVEAL_CLASS}`}
+              >
                 {shouldShowAssistantCopyControl && (
                   <MessageCopyControl content={assistantCopyContent} messageType="assistant" />
                 )}
@@ -427,7 +392,6 @@ const MessageComponent = memo(({ message, prevMessage, createDiff, onFileOpen, s
                     copy and speak it is not gated on the copy control, and an
                     exported transcript keeps it wherever the footer renders. */}
                 <MessageModelLabel model={message.model} />
-                {!isGrouped && <span>{formattedTime}</span>}
               </div>
             )}
           </div>

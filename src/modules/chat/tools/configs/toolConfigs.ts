@@ -394,7 +394,7 @@ export const TOOL_CONFIGS: Record<string, ToolDisplayConfig> = {
           ? `Done — ${done}/${todos.length}`
           : `${done}/${todos.length} done`;
       },
-      defaultOpen: true,
+      defaultOpen: false,
       contentType: 'todo-list',
       getContentProps: (input) => ({
         todos: input.todos

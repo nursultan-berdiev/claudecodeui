@@ -29,20 +29,19 @@ type ModeAppearance = {
 const MODE_APPEARANCE: Partial<Record<PermissionMode, ModeAppearance>> = {
   auto: {
     icon: Bot,
-    trigger:
-      'border-blue-300/60 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-600/40 dark:bg-blue-900/15 dark:text-blue-300 dark:hover:bg-blue-900/25',
-    item: 'text-blue-700 dark:text-blue-300',
+    trigger: 'text-muted-foreground hover:bg-accent hover:text-foreground',
+    item: 'text-foreground',
   },
   plan: {
     icon: ClipboardList,
-    trigger: 'border-primary/20 bg-primary/5 text-primary hover:bg-primary/10',
-    item: 'text-primary',
+    trigger: 'text-muted-foreground hover:bg-accent hover:text-foreground',
+    item: 'text-foreground',
   },
 };
 
 const UNKNOWN_MODE: ModeAppearance = {
   icon: ShieldQuestion,
-  trigger: 'border-border/60 bg-muted/50 text-muted-foreground hover:bg-muted',
+  trigger: 'text-muted-foreground hover:bg-accent hover:text-foreground',
   item: 'text-foreground',
 };
 
@@ -92,14 +91,14 @@ function ComposerPermissionMenu({
           updateAnchor();
           setIsOpen((current) => !current);
         }}
-        className={`flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs transition-colors ${activeAppearance.trigger}`}
+        className={`flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full px-2.5 text-sm transition-colors ${activeAppearance.trigger}`}
         aria-haspopup="menu"
         aria-expanded={isOpen}
         aria-label={heading}
         title={t('input.clickToChangeMode')}
       >
         <ActiveIcon className="h-4 w-4" />
-        <span>{t(`codex.modes.${permissionMode}`)}</span>
+        <span className="hidden sm:inline">{t(`codex.modes.${permissionMode}`)}</span>
       </button>
 
       {isOpen && anchor && createPortal(

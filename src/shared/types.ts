@@ -1,5 +1,4 @@
 import type { TFunction } from 'i18next';
-import type { CSSProperties } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 
 //----------------- LLM PROVIDER MODEL CATALOG ------------
@@ -58,7 +57,8 @@ export type AppTab = 'chat' | 'files' | 'shell' | 'git' | 'tasks' | 'browser' | 
 /** Personal display and input preferences persisted by the shared preference store. */
 export type UiPreferences = {
   showRawParameters: boolean;
-  showThinking: boolean;
+  /** Whether model reasoning shows in the transcript. Stored under a new name so the hidden-by-default switch reaches users whose old `showThinking: true` is saved. */
+  showReasoning: boolean;
   sendByCtrlEnter: boolean;
   sidebarVisible: boolean;
   voiceEnabled: boolean;
@@ -837,17 +837,25 @@ export type QueuedSendOptions = Record<string, unknown>;
 /** Function that turns an old/new string pair into rendered diff lines; the chat session state supplies one memoized, caching instance so each file diff is computed only once. */
 export type DiffCalculator = (oldStr: string, newStr: string) => DiffLine[];
 
-/** A synthetic transcript entry standing for a run of consecutive calls to the same tool, produced by the message grouping pass and identified by its `_isGroup` flag so the message list can collapse the run into one expandable block. */
+/** One request to bring a transcript row into view. A fresh object per request, so asking for the same row twice still counts as a new reveal. */
+export type TranscriptRevealRequest = { message: ChatMessage };
+
+/** A synthetic transcript entry standing for a run of consecutive tool calls (any mix of tools), produced by the message grouping pass and identified by its `_isGroup` flag so the message list can collapse the run into one expandable summary line. */
 export type ToolGroupItem = {
   _isGroup: true;
-  toolName: string;
   messages: ChatMessage[];
   timestamp: ChatMessage['timestamp'];
   /**
-   * Summary line for the collapsed group, built while grouping so the tool-input
-   * JSON parsing it needs never runs during render.
+   * Inputs of the first few calls for the collapsed summary line, extracted while
+   * grouping so the tool-input JSON parsing it needs never runs during render.
    */
-  preview: string;
+  previewNames: string[];
+  /** Calls in the group that `previewNames` does not name. */
+  previewExtraCount: number;
+  /** Calls still waiting for their result. */
+  runningCount: number;
+  /** Calls that ended in an error or were denied. */
+  failedCount: number;
 };
 
 /** One line of a rendered file diff, marked 'added' or 'removed', with its text and line number. */
@@ -1337,26 +1345,6 @@ export type ProviderAuthStatus = {
 
 /** The authentication state of every CLI provider at once, keyed by LLMProvider, so onboarding and settings can render each provider's connected, loading and error state from one object returned by useProviderAuthStatus. */
 export type ProviderAuthStatusMap = Record<LLMProvider, ProviderAuthStatus>;
-
-// ---------------------------
-
-//----------------- QUICK SETTINGS PANEL ------------
-
-/** Identifier of a boolean user preference exposed in the quick settings panel; use it as the key when reading or writing one preference. */
-export type PreferenceToggleKey =
-  | 'showRawParameters'
-  | 'showThinking'
-  | 'sendByCtrlEnter'
-  | 'voiceEnabled';
-
-/** The full set of quick settings booleans keyed by PreferenceToggleKey, held together so the panel can read every toggle from one object. */
-export type QuickSettingsPreferences = Record<PreferenceToggleKey, boolean>;
-
-/** Which content area the quick settings panel is showing: 'settings' (preference toggles) or 'commands' (slash-command list); persisted with the pin state and used by the tab bar and the panel view. */
-export type QuickSettingsTab = 'settings' | 'commands';
-
-/** Inline style for the quick settings drag handle, produced by the drag hook from the stored handle position and applied by the handle component. */
-export type QuickSettingsHandleStyle = CSSProperties;
 
 // ---------------------------
 

@@ -114,7 +114,7 @@ const CodeBlock = ({ node: _node, className, children, forceBlock, ...props }: C
   }
 
   return (
-    <div className="group my-3 overflow-hidden rounded-xl border border-border bg-muted/50 shadow-sm dark:bg-zinc-900">
+    <div className="group my-4 overflow-hidden rounded-2xl border border-border/60 bg-muted/50 dark:bg-neutral-900">
       {/* Label row shares the block's background — no divider, ChatGPT-style */}
       <div className="flex items-center justify-between px-4 pt-2">
         <span className="select-none text-xs text-muted-foreground">{languageLabel}</span>
@@ -222,21 +222,21 @@ const markdownComponents = {
     return <>{children}</>;
   },
   blockquote: ({ children }: { children?: React.ReactNode }) => (
-    <blockquote className="my-3 border-l-2 border-primary/50 pl-4 italic text-muted-foreground">
+    <blockquote className="my-4 border-l-2 border-border pl-4 text-muted-foreground">
       {children}
     </blockquote>
   ),
   hr: () => <hr className="my-4 border-t border-border" />,
-  p: ({ children }: { children?: React.ReactNode }) => <div className="mb-2 last:mb-0">{children}</div>,
+  p: ({ children }: { children?: React.ReactNode }) => <div className="mb-4 last:mb-0">{children}</div>,
   ul: ({ children }: { children?: React.ReactNode }) => (
-    <ul className="mb-2 list-outside list-disc space-y-1 pl-5 marker:text-current last:mb-0">{children}</ul>
+    <ul className="mb-4 list-outside list-disc space-y-1 pl-5 marker:text-current last:mb-0">{children}</ul>
   ),
   ol: ({ children }: { children?: React.ReactNode }) => (
-    <ol className="mb-2 list-outside list-decimal space-y-1 pl-5 marker:text-current last:mb-0">{children}</ol>
+    <ol className="mb-4 list-outside list-decimal space-y-1 pl-5 marker:text-current last:mb-0">{children}</ol>
   ),
   li: ({ children }: { children?: React.ReactNode }) => <li className="[&>div:last-child]:mb-0 [&>div]:mb-1">{children}</li>,
   table: ({ children }: { children?: React.ReactNode }) => (
-    <div className="my-3 overflow-x-auto rounded-lg border border-border">
+    <div className="my-4 overflow-x-auto rounded-xl border border-border">
       {/* my-0 cancels Tailwind Typography's table margin, which would show as blank bands inside the border */}
       <table className="my-0 min-w-full border-collapse text-sm">{children}</table>
     </div>

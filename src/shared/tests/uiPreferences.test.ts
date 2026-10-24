@@ -33,7 +33,7 @@ const baseline = (): UiPreferences => readStoredUiPreferences();
 test('a fresh install gets the documented defaults', () => {
   assert.deepEqual(readStoredUiPreferences(), {
     showRawParameters: false,
-    showThinking: true,
+    showReasoning: false,
     sendByCtrlEnter: false,
     sidebarVisible: true,
     voiceEnabled: false,
@@ -43,39 +43,47 @@ test('a fresh install gets the documented defaults', () => {
 });
 
 test('the stored blob is read back', () => {
-  storeUiPreferences({ showThinking: false, voiceEnabled: true });
+  storeUiPreferences({ showReasoning: true, voiceEnabled: true });
 
   const preferences = readStoredUiPreferences();
-  assert.equal(preferences.showThinking, false);
+  assert.equal(preferences.showReasoning, true);
   assert.equal(preferences.voiceEnabled, true);
   assert.equal(preferences.sidebarVisible, true, 'unlisted keys keep their default');
 });
 
 test('values stored as strings are coerced, as older versions wrote them', () => {
-  storeUiPreferences({ showThinking: 'false', voiceEnabled: 'true' });
+  storeUiPreferences({ showReasoning: 'true', voiceEnabled: 'true' });
 
   const preferences = readStoredUiPreferences();
-  assert.equal(preferences.showThinking, false);
+  assert.equal(preferences.showReasoning, true);
   assert.equal(preferences.voiceEnabled, true);
 });
 
 test('a stored value of the wrong type falls back instead of throwing', () => {
   storeUiPreferences('not an object');
 
-  assert.equal(readStoredUiPreferences().showThinking, true);
+  assert.equal(readStoredUiPreferences().showReasoning, false);
+});
+
+test('reasoning saved as shown under the old key stays hidden', () => {
+  // The old key was written with every toggle, so `showThinking: true` is in
+  // almost every stored blob; reading it would cancel the hidden-by-default switch.
+  storeUiPreferences({ showThinking: true });
+
+  assert.equal(readStoredUiPreferences().showReasoning, false);
 });
 
 test('setting a preference changes only that key', () => {
   const state = baseline();
-  const next = uiPreferencesReducer(state, { type: 'set', key: 'showThinking', value: false });
+  const next = uiPreferencesReducer(state, { type: 'set', key: 'showReasoning', value: true });
 
-  assert.equal(next.showThinking, false);
+  assert.equal(next.showReasoning, true);
   assert.equal(next.sidebarVisible, state.sidebarVisible);
 });
 
 test('setting a preference to its current value keeps the same object', () => {
   const state = baseline();
-  const next = uiPreferencesReducer(state, { type: 'set', key: 'showThinking', value: true });
+  const next = uiPreferencesReducer(state, { type: 'set', key: 'showReasoning', value: false });
 
   assert.equal(next, state, 'a no-op must not wake consumers');
 });
@@ -95,10 +103,10 @@ test('a cross-tab update applies every changed key at once', () => {
   const state = baseline();
   const next = uiPreferencesReducer(state, {
     type: 'set_many',
-    value: { showThinking: false, voiceEnabled: true },
+    value: { showReasoning: true, voiceEnabled: true },
   });
 
-  assert.equal(next.showThinking, false);
+  assert.equal(next.showReasoning, true);
   assert.equal(next.voiceEnabled, true);
 });
 
@@ -106,7 +114,7 @@ test('a cross-tab update with nothing new keeps the same object', () => {
   const state = baseline();
   const next = uiPreferencesReducer(state, {
     type: 'set_many',
-    value: { showThinking: state.showThinking },
+    value: { showReasoning: state.showReasoning },
   });
 
   assert.equal(next, state);

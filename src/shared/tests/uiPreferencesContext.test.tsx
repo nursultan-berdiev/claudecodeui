@@ -35,10 +35,10 @@ test('a toggle in one consumer is visible to another', () => {
   );
 
   act(() => {
-    result.current.setPreference('showThinking', false);
+    result.current.setPreference('showFilesTab', false);
   });
 
-  assert.equal(result.current.preferences.showThinking, false);
+  assert.equal(result.current.preferences.showFilesTab, false);
 });
 
 test('a toggle persists to the single stored blob', () => {
@@ -56,13 +56,13 @@ test('a change made elsewhere is picked up', () => {
   // Previously this arrived as a cross-tab `storage` event. It now arrives from
   // the preference store, which also covers a change made on another device.
   const { result } = renderHook(() => useUiPreferences(), { wrapper });
-  assert.equal(result.current.showThinking, true);
+  assert.equal(result.current.showFilesTab, true);
 
   act(() => {
-    writeUserPreference('uiPreferences', { showThinking: false });
+    writeUserPreference('uiPreferences', { showFilesTab: false });
   });
 
-  assert.equal(result.current.showThinking, false);
+  assert.equal(result.current.showFilesTab, false);
 });
 
 test('mounting does not write the defaults over preferences not yet fetched', () => {
@@ -82,21 +82,21 @@ test('a value arriving from the store is not echoed straight back to it', () => 
   const { result } = renderHook(() => useUiPreferences(), { wrapper });
 
   act(() => {
-    writeUserPreference('uiPreferences', { showThinking: false, voiceEnabled: true });
+    writeUserPreference('uiPreferences', { showFilesTab: false, voiceEnabled: true });
   });
 
-  assert.equal(result.current.showThinking, false);
+  assert.equal(result.current.showFilesTab, false);
   // The reducer returns a fresh object for an incoming change, so a guard that
   // compared by identity would not catch it and would rewrite the blob with all
   // five keys spelled out. The tell is that the stored value is untouched.
   assert.deepEqual(
     readUserPreference<Record<string, unknown>>('uiPreferences', {}),
-    { showThinking: false, voiceEnabled: true },
+    { showFilesTab: false, voiceEnabled: true },
   );
 });
 
 test('the setter identity survives a toggle, so a write-only consumer can memo on it', () => {
-  const setters: Array<(key: 'showThinking', value: boolean) => void> = [];
+  const setters: Array<(key: 'showFilesTab', value: boolean) => void> = [];
   const { result } = renderHook(
     () => {
       const setPreference = useSetUiPreference();
@@ -107,7 +107,7 @@ test('the setter identity survives a toggle, so a write-only consumer can memo o
   );
 
   act(() => {
-    result.current.setPreference('showThinking', false);
+    result.current.setPreference('showFilesTab', false);
   });
 
   assert.ok(setters.length > 1, 'expected a re-render to have happened');
@@ -118,19 +118,19 @@ test('there is one owner: a write from one consumer commits once for the reader'
   const readerCommits: boolean[] = [];
 
   function Reader() {
-    const { showThinking } = useUiPreferences();
+    const { showFilesTab } = useUiPreferences();
     // Recorded from an effect: mutating during render is a side effect.
     React.useEffect(() => {
-      readerCommits.push(showThinking);
+      readerCommits.push(showFilesTab);
     });
-    return React.createElement('span', { 'data-testid': 'reader' }, String(showThinking));
+    return React.createElement('span', { 'data-testid': 'reader' }, String(showFilesTab));
   }
 
   const toggleRef: { current: (() => void) | null } = { current: null };
   function Writer() {
     const setPreference = useSetUiPreference();
     React.useEffect(() => {
-      toggleRef.current = () => setPreference('showThinking', false);
+      toggleRef.current = () => setPreference('showFilesTab', false);
     }, [setPreference]);
     return null;
   }
@@ -165,7 +165,7 @@ test('no same-tab sync event is needed or emitted', () => {
 
   const { result } = renderHook(() => useSetUiPreference(), { wrapper });
   act(() => {
-    result.current('showThinking', false);
+    result.current('showFilesTab', false);
   });
 
   window.removeEventListener('ui-preferences:sync', countSync);

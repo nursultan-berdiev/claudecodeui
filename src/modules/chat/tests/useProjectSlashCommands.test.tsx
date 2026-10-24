@@ -53,7 +53,7 @@ test('assembles built-in, deduped skills and custom commands in that order', asy
     },
   }));
 
-  const { useProjectSlashCommands } = await import('@/shared/hooks/useProjectSlashCommands');
+  const { useProjectSlashCommands } = await import('@/modules/chat/hooks/useProjectSlashCommands');
   const { result } = renderHook(() => useProjectSlashCommands(project, 'claude'));
 
   await waitFor(() => assert.equal(result.current.isLoading, false));
@@ -78,7 +78,7 @@ test('assembles built-in, deduped skills and custom commands in that order', asy
 });
 
 test('no project yields an empty list without a request', async () => {
-  const { useProjectSlashCommands } = await import('@/shared/hooks/useProjectSlashCommands');
+  const { useProjectSlashCommands } = await import('@/modules/chat/hooks/useProjectSlashCommands');
   const { result } = renderHook(() => useProjectSlashCommands(null, 'claude'));
 
   await waitFor(() => assert.equal(result.current.isLoading, false));
@@ -90,7 +90,7 @@ test('no project yields an empty list without a request', async () => {
 test('a failed command request yields an empty list and the error flag', async () => {
   listCommands.mockResolvedValue(jsonResponse({}, false));
 
-  const { useProjectSlashCommands } = await import('@/shared/hooks/useProjectSlashCommands');
+  const { useProjectSlashCommands } = await import('@/modules/chat/hooks/useProjectSlashCommands');
   const { result } = renderHook(() => useProjectSlashCommands(project, 'claude'));
 
   await waitFor(() => assert.equal(result.current.error, true));
@@ -102,7 +102,7 @@ test('a failed skills request keeps the server commands', async () => {
   listCommands.mockResolvedValue(jsonResponse({ builtIn: [{ name: '/clear' }], custom: [] }));
   listSkills.mockResolvedValue(jsonResponse({}, false));
 
-  const { useProjectSlashCommands } = await import('@/shared/hooks/useProjectSlashCommands');
+  const { useProjectSlashCommands } = await import('@/modules/chat/hooks/useProjectSlashCommands');
   const { result } = renderHook(() => useProjectSlashCommands(project, 'claude'));
 
   await waitFor(() => assert.equal(result.current.isLoading, false));
@@ -114,7 +114,7 @@ test('a disabled consumer does not request until it is enabled', async () => {
   listCommands.mockResolvedValue(jsonResponse({ builtIn: [{ name: '/help' }], custom: [] }));
   listSkills.mockResolvedValue(jsonResponse({ data: { skills: [] } }));
 
-  const { useProjectSlashCommands } = await import('@/shared/hooks/useProjectSlashCommands');
+  const { useProjectSlashCommands } = await import('@/modules/chat/hooks/useProjectSlashCommands');
   const { result, rerender } = renderHook(
     ({ enabled }: { enabled: boolean }) => useProjectSlashCommands(project, 'claude', { enabled }),
     { initialProps: { enabled: false } },

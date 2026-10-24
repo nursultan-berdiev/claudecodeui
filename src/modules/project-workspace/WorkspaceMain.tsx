@@ -34,6 +34,8 @@ type WorkspaceMainProps = {
   newSessionTrigger: number;
   /** Persists a new title for a session; resolves false when the backend refuses it. Used by the header's inline rename. */
   onRenameSession: (sessionId: string, summary: string) => Promise<boolean>;
+  /** Opens a fresh chat in a project; the empty workspace offers it as its main action. */
+  onNewSession: (project: Project) => void;
 };
 
 /** Rendered by ProjectMainRegion to show the selected project's visible workspace tab. */
@@ -53,11 +55,14 @@ function WorkspaceMain({
   externalMessageUpdate,
   newSessionTrigger,
   onRenameSession,
+  onNewSession,
 }: WorkspaceMainProps) {
   const preferences = useUiPreferences();
   const { user } = useAuth();
   const activeTab = isWorkspaceTabVisible(requestedTab, preferences, user?.role === 'admin') ? requestedTab : 'chat';
-  const { showRawParameters, showThinking, sendByCtrlEnter } = preferences;
+  const { showReasoning: showThinking, sendByCtrlEnter } = preferences;
+  // Only administrators can reach this switch now, so a member's old stored "on" is ignored.
+  const showRawParameters = preferences.showRawParameters && user?.role === 'admin';
 
   const { tasksEnabled, isTaskMasterInstalled } = useTasksSettings();
   const browserUseEnabled = useBrowserUseEnabled();
@@ -140,7 +145,7 @@ function WorkspaceMain({
   }
 
   if (!selectedProject) {
-    return <WorkspaceStateView mode="empty" isMobile={isMobile} onMenuClick={onMenuClick} />;
+    return <WorkspaceStateView mode="empty" isMobile={isMobile} onMenuClick={onMenuClick} onNewSession={onNewSession} />;
   }
 
   return (
@@ -148,7 +153,6 @@ function WorkspaceMain({
       <WorkspaceHeader
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        selectedProject={selectedProject}
         selectedSession={selectedSession}
         shouldShowTasksTab={shouldShowTasksTab}
         shouldShowBrowserTab={shouldShowBrowserTab}

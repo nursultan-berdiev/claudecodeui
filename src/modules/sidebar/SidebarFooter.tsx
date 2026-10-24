@@ -1,169 +1,98 @@
 import { Settings, ArrowUpCircle, AlertTriangle, BookOpen, LogOut } from 'lucide-react';
-import { useAuth } from '@/modules/auth';
-import { NewChatButton } from '@/modules/company';
+import { useNavigate } from 'react-router-dom';
 import type { TFunction } from 'i18next';
 
+import { useAuth } from '@/modules/auth';
+import { ActionMenu, type ActionMenuItem } from '@/shared/ui';
 import { IS_PLATFORM } from '@/shared/utils';
-import type { Project, ReleaseInfo } from '@/shared/types';
-
-const GITHUB_REPO_URL = 'https://github.com/siteboon/claudecodeui';
+import type { ReleaseInfo } from '@/shared/types';
 
 type SidebarFooterProps = {
   updateAvailable: boolean;
   restartRequired: boolean;
   releaseInfo: ReleaseInfo | null;
   latestVersion: string | null;
-  currentVersion: string;
   onShowVersionModal: () => void;
   onShowSettings: () => void;
-  onNewSession: (project: Project) => void;
   t: TFunction;
 };
 
-/** Rendered by SidebarContent at the bottom of the panel for settings, update status and the skills library. */
+/**
+ * Rendered by SidebarContent at the bottom of the panel: the signed-in user,
+ * whose menu holds skills, settings and logout. Server update notices concern
+ * whoever runs the server, so only administrators see them.
+ */
 export default function SidebarFooter({
   updateAvailable,
   restartRequired,
   releaseInfo,
   latestVersion,
-  currentVersion,
   onShowVersionModal,
   onShowSettings,
-  onNewSession,
   t,
 }: SidebarFooterProps) {
   const { user, logout } = useAuth();
-  const logoutLabel = user?.username ? `${t('common:navigation.logout')} (${user.username})` : t('common:navigation.logout');
+  const navigate = useNavigate();
+  const isAdmin = user?.role === 'admin';
+  const username = typeof user?.username === 'string' ? user.username : '';
+  const accountLabel = username || t('actions.settings');
+
+  const menuItems: ActionMenuItem[] = [
+    {
+      key: 'skills',
+      label: t('company.skillsTitle', { ns: 'settings' }),
+      icon: BookOpen,
+      onSelect: () => navigate('/skills'),
+    },
+    { key: 'settings', label: t('actions.settings'), icon: Settings, onSelect: onShowSettings },
+    ...(!IS_PLATFORM
+      ? [{ key: 'logout', label: t('common:navigation.logout'), icon: LogOut, showDividerBefore: true, onSelect: logout }]
+      : []),
+  ];
+
   return (
-    <div className="flex-shrink-0" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0)' }}>
-      {/* Restart-required banner: the running server version differs from the
-          installed/frontend version (updated but not restarted). */}
-      {restartRequired && (
-        <>
-          <div className="nav-divider" />
-          <div className="px-2 py-1.5 md:px-2 md:py-1.5">
-            <div className="flex items-center gap-2.5 rounded-lg border border-amber-300/60 bg-amber-50/80 px-2.5 py-2 dark:border-amber-700/40 dark:bg-amber-900/15">
-              <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-500 dark:text-amber-400" />
-              <span className="min-w-0 flex-1 text-xs font-medium text-amber-700 dark:text-amber-300">
-                {t('version.restartRequired')}
-              </span>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Update banner */}
-      {updateAvailable && (
-        <>
-          <div className="nav-divider" />
-          {/* Desktop update */}
-          <div className="hidden px-2 py-1.5 md:block">
-            <button
-              className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-blue-50/80 dark:hover:bg-blue-900/15"
-              onClick={onShowVersionModal}
-            >
-              <div className="relative flex-shrink-0">
-                <ArrowUpCircle className="h-4 w-4 text-blue-500 dark:text-blue-400" />
-                <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-normal text-blue-600 dark:text-blue-300">
-                  {releaseInfo?.title || `v${latestVersion}`}
-                </span>
-                <span className="text-[10px] text-blue-500/70 dark:text-blue-400/60">
-                  {t('version.updateAvailable')}
-                </span>
-              </div>
-            </button>
-          </div>
-
-          {/* Mobile update */}
-          <div className="px-3 py-2 md:hidden">
-            <button
-              className="flex h-11 w-full items-center gap-3 rounded-xl border border-blue-200/60 bg-blue-50/80 px-3.5 transition-all active:scale-[0.98] dark:border-blue-700/40 dark:bg-blue-900/15"
-              onClick={onShowVersionModal}
-            >
-              <div className="relative flex-shrink-0">
-                <ArrowUpCircle className="h-4 w-4 text-blue-500 dark:text-blue-400" />
-                <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
-              </div>
-              <div className="min-w-0 flex-1 text-left">
-                <span className="block truncate text-sm font-normal text-blue-600 dark:text-blue-300">
-                  {releaseInfo?.title || `v${latestVersion}`}
-                </span>
-                <span className="text-xs text-blue-500/70 dark:text-blue-400/60">
-                  {t('version.updateAvailable')}
-                </span>
-              </div>
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* Chat and skills */}
-      <div className="nav-divider" />
-      <div className="px-2 py-1">
-        <NewChatButton onOpenChat={onNewSession} />
-        <a href="/skills" className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm hover:bg-accent"><BookOpen className="h-4 w-4" />{t('company.skillsTitle', { ns: 'settings' })}</a>
-      </div>
-
-      {/* Desktop settings */}
-      <div className="hidden px-2 py-1.5 md:block">
-        <button
-          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
-          onClick={onShowSettings}
-        >
-          <Settings className="h-3.5 w-3.5" />
-          <span className="text-sm">{t('actions.settings')}</span>
-        </button>
-        {!IS_PLATFORM && (
-          <button
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
-            onClick={logout}
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            <span className="truncate text-sm">{logoutLabel}</span>
-          </button>
-        )}
-      </div>
-
-      {/* Desktop version brand line (OSS mode only) */}
-      {!IS_PLATFORM && (
-        <div className="hidden px-3 py-2 text-center md:block">
-          <a
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[10px] text-muted-foreground/40 transition-colors hover:text-muted-foreground"
-          >
-            CloudCLI v{currentVersion} – {t('branding.openSource')}
-          </a>
+    <div className="flex-shrink-0 px-2 pb-2 pt-1" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom, 0px))' }}>
+      {/* The running server differs from the installed version (updated but not restarted). */}
+      {isAdmin && restartRequired && (
+        <div className="mb-1 flex items-center gap-2.5 rounded-lg border border-amber-300/60 bg-amber-50/80 px-2.5 py-2 dark:border-amber-700/40 dark:bg-amber-900/15">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0 text-amber-500 dark:text-amber-400" />
+          <span className="min-w-0 flex-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+            {t('version.restartRequired')}
+          </span>
         </div>
       )}
 
-      {/* Mobile settings */}
-      <div className="px-3 pb-3 pt-2 md:hidden">
+      {isAdmin && updateAvailable && (
         <button
-          className="flex h-10 w-full items-center gap-3 rounded-xl bg-muted/40 px-3.5 transition-all hover:bg-muted/60 active:scale-[0.98]"
-          onClick={onShowSettings}
+          className="mb-1 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-accent"
+          onClick={onShowVersionModal}
         >
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-background/80">
-            <Settings className="h-4 w-4 text-muted-foreground" />
-          </div>
-          <span className="text-sm font-normal text-foreground">{t('actions.settings')}</span>
+          <ArrowUpCircle className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm text-foreground">{releaseInfo?.title || `v${latestVersion}`}</span>
+            <span className="text-xs text-muted-foreground">{t('version.updateAvailable')}</span>
+          </span>
         </button>
-        {!IS_PLATFORM && (
-          <button
-            className="mt-2 flex h-10 w-full items-center gap-3 rounded-xl bg-muted/40 px-3.5 transition-all hover:bg-muted/60 active:scale-[0.98]"
-            onClick={logout}
-          >
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-background/80">
-              <LogOut className="h-4 w-4 text-muted-foreground" />
-            </div>
-            <span className="truncate text-sm font-normal text-foreground">{logoutLabel}</span>
-          </button>
+      )}
+
+      <ActionMenu
+        label={accountLabel}
+        ariaLabel={accountLabel}
+        variant="ghost"
+        align="left"
+        className="flex w-full"
+        triggerClassName="h-auto w-full justify-start gap-2.5 rounded-lg px-2 py-2 font-normal hover:bg-accent"
+        menuClassName="bottom-full top-auto mb-2 mt-0 w-full min-w-0 rounded-xl p-1.5 shadow-lg"
+        triggerContent={(
+          <>
+            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold uppercase text-primary-foreground">
+              {(username || '?').slice(0, 1)}
+            </span>
+            <span className="min-w-0 truncate text-sm text-foreground">{accountLabel}</span>
+          </>
         )}
-      </div>
+        items={menuItems}
+      />
     </div>
   );
 }

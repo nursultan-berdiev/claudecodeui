@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MessageSquarePlus } from 'lucide-react';
+import { SquarePen } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { api, readApiJson } from '@/shared/api';
 import { writeSelectedProvider } from '@/shared/selectedProvider';
@@ -14,8 +14,12 @@ async function isSignedIn(agent: string): Promise<boolean> {
   } catch { return false; }
 }
 
-/** Used by the sidebar to open an owner-only chat even when the user has no selected project. */
-export function NewChatButton({ onOpenChat }: { onOpenChat: (project: Project) => void }) {
+/**
+ * Used by the sidebar (its header and collapsed rail) and by project-workspace's
+ * empty view to open an owner-only chat even when the user has no selected project.
+ * `compact` draws the icon alone for the collapsed rail.
+ */
+export function NewChatButton({ onOpenChat, compact = false }: { onOpenChat: (project: Project) => void; compact?: boolean }) {
   const { t } = useTranslation('settings');
   // The modal collects the provider and shared workspace for a fresh private chat.
   const [open, setOpen] = useState(false);
@@ -63,23 +67,30 @@ export function NewChatButton({ onOpenChat }: { onOpenChat: (project: Project) =
     setPending(false);
   };
   return <>
-    <button type="button" onClick={() => void start()} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm hover:bg-accent">
-      <MessageSquarePlus className="h-4 w-4" />{t('company.newChat')}
-    </button>
+    {compact ? (
+      <button type="button" onClick={() => void start()} aria-label={t('company.newChat')} title={t('company.newChat')}
+        className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+        <SquarePen className="h-4 w-4" />
+      </button>
+    ) : (
+      <button type="button" onClick={() => void start()} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-foreground transition-colors hover:bg-accent">
+        <SquarePen className="h-4 w-4" />{t('company.newChat')}
+      </button>
+    )}
     {open && createPortal(<div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 p-4" data-escape-layer>
-      <section role="dialog" aria-modal="true" aria-label={t('company.newChat')} className="w-full max-w-md space-y-4 rounded-xl border border-border bg-background p-5 shadow-xl">
+      <section role="dialog" aria-modal="true" aria-label={t('company.newChat')} className="w-full max-w-md space-y-4 rounded-2xl border border-border bg-background p-5 shadow-xl">
         <h2 className="font-semibold">{t('company.newChat')}</h2>
         <p className="text-sm text-muted-foreground">{t('company.newChatDescription')}</p>
-        <label className="block text-sm">{t('company.provider')}<select aria-label={t('company.provider')} value={provider} onChange={(event) => setProvider(event.target.value)} className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2">
+        <label className="block text-sm">{t('company.provider')}<select aria-label={t('company.provider')} value={provider} onChange={(event) => setProvider(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2">
           {AGENTS.filter((agent) => agents.includes(agent.id)).map((agent) => <option key={agent.id} value={agent.id}>{agent.label}</option>)}
         </select></label>
-        <label className="block text-sm">{t('company.project')}<select aria-label={t('company.project')} value={projectPath} onChange={(event) => setProjectPath(event.target.value)} className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2">
+        <label className="block text-sm">{t('company.project')}<select aria-label={t('company.project')} value={projectPath} onChange={(event) => setProjectPath(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2">
           <option value="">{t('company.defaultWorkspace')}</option>
           {projects.map((project) => <option key={project.projectId} value={project.fullPath}>{project.displayName}</option>)}
         </select></label>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <div className="flex justify-end gap-2"><button className="rounded-md border border-border px-3 py-2 text-sm" onClick={() => setOpen(false)}>{t('company.cancel')}</button>
-          <button disabled={pending || !provider} className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50" onClick={() => void create()}>{t('company.create')}</button></div>
+        <div className="flex justify-end gap-2"><button className="rounded-full border border-border px-4 py-2 text-sm hover:bg-accent" onClick={() => setOpen(false)}>{t('company.cancel')}</button>
+          <button disabled={pending || !provider} className="rounded-full bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50" onClick={() => void create()}>{t('company.create')}</button></div>
       </section>
     </div>, document.body)}
   </>;

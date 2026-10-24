@@ -23,6 +23,7 @@ function ProjectMainRegion({
     newSessionTrigger,
     registerOptimisticSession,
     renameSession,
+    handleNewSession,
   } = useProjectMainState();
 
   const handleOpenSidebar = useCallback(() => {
@@ -60,6 +61,7 @@ function ProjectMainRegion({
       externalMessageUpdate={externalMessageUpdate}
       newSessionTrigger={newSessionTrigger}
       onRenameSession={renameSession}
+      onNewSession={handleNewSession}
     />
   );
 }
