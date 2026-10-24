@@ -1,9 +1,11 @@
 // @ts-nocheck -- JWT request augmentation is narrowed by Auth route contracts.
 import jwt from 'jsonwebtoken';
 
-import { IS_PLATFORM } from '@/shared/utils.js';
+import { IS_PLATFORM, withAccessActor } from '@/shared/utils.js';
 
-import { userDb, appConfigDb } from '../database/index.js';
+import { userDb, appConfigDb, authAuditDb } from '../database/index.js';
+
+import { isAllowedBeforePasswordChange, mustChangePassword } from './password-change-gate.js';
 
 // Use env var if set, otherwise auto-generate a unique secret per installation
 const JWT_SECRET = process.env.JWT_SECRET || appConfigDb.getOrCreateJwtSecret();
@@ -32,7 +34,7 @@ const authenticateToken = async (req, res, next) => {
         return res.status(500).json({ error: 'Platform mode: No user found in database' });
       }
       req.user = user;
-      return next();
+      return withAccessActor({ id: user.id, role: user.role }, next);
     } catch (error) {
       console.error('Platform mode error:', error);
       return res.status(500).json({ error: 'Platform mode: Failed to fetch user' });
@@ -61,11 +63,19 @@ const authenticateToken = async (req, res, next) => {
 
     // Verify user still exists and is active
     const user = userDb.getUserById(decoded.userId);
-    if (!user) {
+    if (!user || user.auth_version !== (decoded.authVersion ?? 0)) {
       res.setHeader('X-Auth-Error', 'invalid-token');
       return res.status(401).json({
         error: 'Invalid token. User not found.',
         code: 'AUTH_TOKEN_INVALID',
+      });
+    }
+
+    const actionPath = req.originalUrl.split('?')[0];
+    if (mustChangePassword(user) && !isAllowedBeforePasswordChange(actionPath)) {
+      return res.status(403).json({
+        error: 'Password change required',
+        code: 'AUTH_PASSWORD_CHANGE_REQUIRED',
       });
     }
 
@@ -80,7 +90,16 @@ const authenticateToken = async (req, res, next) => {
     }
 
     req.user = user;
-    next();
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) && actionPath !== '/api/auth/refresh') {
+      res.once('finish', () => {
+        try {
+          authAuditDb.record(user.id, `${req.method} ${actionPath}`, null, res.statusCode);
+        } catch (auditError) {
+          console.error('Failed to record audit event', auditError);
+        }
+      });
+    }
+    withAccessActor({ id: user.id, role: user.role }, next);
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
       res.setHeader('X-Auth-Error', 'session-expired');
@@ -107,7 +126,8 @@ const generateToken = (user) => {
   return jwt.sign(
     {
       userId: user.id,
-      username: user.username
+      username: user.username,
+      authVersion: user.auth_version ?? 0,
     },
     JWT_SECRET,
     { expiresIn: '7d' }
@@ -121,7 +141,7 @@ const authenticateWebSocket = (token) => {
     try {
       const user = userDb.getFirstUser();
       if (user) {
-        return { id: user.id, userId: user.id, username: user.username };
+        return { id: user.id, userId: user.id, username: user.username, role: user.role, authVersion: user.auth_version };
       }
       return null;
     } catch (error) {
@@ -139,10 +159,10 @@ const authenticateWebSocket = (token) => {
     const decoded = jwt.verify(token, JWT_SECRET);
     // Verify user actually exists in database (matches REST authenticateToken behavior)
     const user = userDb.getUserById(decoded.userId);
-    if (!user) {
+    if (!user || user.auth_version !== (decoded.authVersion ?? 0) || mustChangePassword(user)) {
       return null;
     }
-    return { userId: user.id, username: user.username };
+    return { userId: user.id, username: user.username, role: user.role, authVersion: user.auth_version };
   } catch (error) {
     if (!(error instanceof jwt.TokenExpiredError)) {
       console.warn(
@@ -154,10 +174,19 @@ const authenticateWebSocket = (token) => {
   }
 };
 
+/** Used by protected server routes to limit shared runtime administration. */
+const requireAdmin = (req, res, next) => {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Administrator access required', code: 'AUTH_ADMIN_REQUIRED' });
+  }
+  next();
+};
+
 export {
   validateApiKey,
   authenticateToken,
   generateToken,
   authenticateWebSocket,
+  requireAdmin,
   JWT_SECRET
 };

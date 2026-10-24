@@ -24,7 +24,8 @@
     "git": "Source Control",
     "tasks": "Tasks",
     "browser": "Browser",
-    "computer": "Computer"
+    "computer": "Computer",
+    "views": "Workspace views"
   },
   "status": {
     "loading": "Loading...",
@@ -97,7 +98,9 @@
     "untitledSession": "Untitled Session",
     "projectFiles": "Project Files",
     "renameSessionHint": "{{title}} (double-click to rename)",
-    "renameSessionLabel": "Session title"
+    "renameSessionLabel": "Session title",
+    "greeting": "What can I help with?",
+    "startChatHint": "Start a new chat or pick one on the left."
   },
   "fileTree": {
     "loading": "Loading files...",

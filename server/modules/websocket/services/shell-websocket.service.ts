@@ -196,13 +196,15 @@ function buildShellCommand(
   }
 
   if (provider === 'codex') {
+    // The image pins the CLI and the node user cannot write the global npm prefix, so its update offer can only fail.
+    const codex = process.env.CLOUDCLI_CONTAINER_DEPLOYMENT === 'true' ? 'codex -c check_for_update_on_startup=false' : 'codex';
     if (resumeSessionId) {
       if (os.platform() === 'win32') {
-        return `codex resume "${resumeSessionId}"; if ($LASTEXITCODE -ne 0) { codex }`;
+        return `${codex} resume "${resumeSessionId}"; if ($LASTEXITCODE -ne 0) { ${codex} }`;
       }
-      return `codex resume "${resumeSessionId}" || codex`;
+      return `${codex} resume "${resumeSessionId}" || ${codex}`;
     }
-    return 'codex';
+    return codex;
   }
 
   if (provider === 'opencode') {

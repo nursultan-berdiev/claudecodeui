@@ -134,9 +134,9 @@
   },
   "search": {
     "modeProjects": "Проекты",
-    "modeConversations": "Разговоры",
+    "modeConversations": "Чаты",
     "modeMore": "Ещё",
-    "conversationsPlaceholder": "Поиск в разговорах...",
+    "conversationsPlaceholder": "Поиск в чатах",
     "searching": "Поиск...",
     "sessionTitles": "Названия сеансов",
     "conversationContents": "Содержимое разговоров",
@@ -185,5 +185,19 @@
     "archiveSessionsNotice_few": "Архивирование убирает сеансы из активного списка, сохраняя их историю.",
     "archiveSessionsNotice_many": "Архивирование убирает сеансы из активного списка, сохраняя их историю.",
     "archiveSessionsNotice_other": "Архивирование убирает сеансы из активного списка, сохраняя их историю."
+  },
+  "recent": {
+    "emptyTitle": "Чатов пока нет",
+    "emptyDescription": "Здесь появятся ваши последние чаты.",
+    "loadFailed": "Не удалось загрузить чаты",
+    "loadMore": "Показать более старые",
+    "loadingMore": "Загрузка...",
+    "groups": {
+      "today": "Сегодня",
+      "yesterday": "Вчера",
+      "previous7Days": "Предыдущие 7 дней",
+      "previous30Days": "Предыдущие 30 дней",
+      "older": "Ранее"
+    }
   }
 }

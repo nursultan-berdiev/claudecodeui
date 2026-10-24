@@ -1,4 +1,5 @@
 import express from 'express';
+import { requireAdmin } from '@/modules/auth/index.js';
 
 import { createProject, updateProjectDisplayName } from '@/modules/projects/services/project-management.service.js';
 import { createProjectCloneRouter } from '@/modules/projects/project-clone.routes.js';
@@ -18,6 +19,10 @@ import { applyLegacyStarredProjectIds, toggleProjectStar } from '@/modules/proje
 const PENDING_CLONE_REQUEST_TTL_MS = 60_000;
 
 const router = express.Router();
+router.use((req, res, next) => {
+  if (req.method === 'DELETE' || (req.method !== 'GET' && /\/(rename|restore)$/.test(req.path))) return requireAdmin(req, res, next);
+  next();
+});
 
 function readQueryStringValue(value: unknown): string {
   if (typeof value === 'string') {

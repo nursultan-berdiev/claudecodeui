@@ -4,6 +4,7 @@ import path from 'node:path';
 import mime from 'mime-types';
 
 import { getGlobalImageAssetsDir, toPosixPath } from '@/shared/image-attachments.js';
+import { resourceAccessDb } from '@/modules/database/index.js';
 
 /**
  * Image mime types accepted for chat attachment uploads. SVG is allowed for
@@ -56,6 +57,7 @@ export async function ensureImageAssetsDir(): Promise<string> {
  */
 export function buildStoredImageRecords(files: UploadedImageFile[]): StoredImageAsset[] {
   const assetsDir = getGlobalImageAssetsDir();
+  for (const file of files) resourceAccessDb.recordAsset(file.filename);
   return files.map((file) => ({
     name: file.originalname,
     path: toPosixPath(path.join(assetsDir, file.filename)),
@@ -112,6 +114,7 @@ export async function openStoredAttachmentAsset(filename: string) {
   if (!resolved) {
     return { status: 'invalid' as const };
   }
+  if (!resourceAccessDb.canReadAsset(filename)) return { status: 'missing' as const };
 
   try {
     await fs.access(resolved);

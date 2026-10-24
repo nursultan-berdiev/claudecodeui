@@ -34,7 +34,7 @@ function validateSetupForm(formState: SetupFormState, t: (key: string) => string
     return t('register.errors.usernameLength');
   }
 
-  if (formState.password.length < 6) {
+  if (formState.password.length < 8) {
     return t('register.errors.passwordLength');
   }
 

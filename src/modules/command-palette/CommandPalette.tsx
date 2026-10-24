@@ -2,15 +2,10 @@ import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowDownToLine,
-  ArrowUpFromLine,
   ChevronRight,
   FileText,
-  GitCommit,
-  GitMerge,
   MessageSquare,
   MessageSquarePlus,
-  RefreshCw,
   Settings,
   SunMoon,
   X,
@@ -28,17 +23,17 @@ import {
   DialogTitle,
 } from '@/shared/ui';
 import { useTheme } from '@/shared/context/ThemeContext';
+import { useUiPreferences } from '@/shared/context/UiPreferencesContext';
+import { useAuth } from '@/modules/auth';
+import { isWorkspaceTabVisible } from '@/shared/utils';
 import { usePaletteOps } from '@/modules/command-palette/context/PaletteOpsContext';
 import { SETTINGS_MAIN_TABS } from '@/shared/constants';
 import type { AppTab, Project } from '@/shared/types';
 import { useSessionsSource } from '@/modules/command-palette/hooks/useSessionsSource';
 import { useFilesSource } from '@/modules/command-palette/hooks/useFilesSource';
-import { useCommitsSource } from '@/modules/command-palette/hooks/useCommitsSource';
 import { useSessionMessageSearch } from '@/modules/command-palette/hooks/useSessionMessageSearch';
-import { useBranchesSource } from '@/modules/command-palette/hooks/useBranchesSource';
-import { useGitActions } from '@/modules/command-palette/hooks/useGitActions';
 
-type Page = 'actions' | 'files' | 'sessions' | 'commits' | 'branches';
+type Page = 'actions' | 'files' | 'sessions';
 
 type CommandPaletteProps = {
   selectedProject: Project | null;
@@ -51,7 +46,6 @@ const NAV_TABS: Array<{ id: AppTab; labelKey: string; keywords: string }> = [
   { id: 'chat', labelKey: 'commandPalette.navChat', keywords: 'chat messages conversation' },
   { id: 'files', labelKey: 'commandPalette.navFiles', keywords: 'files file tree explorer' },
   { id: 'shell', labelKey: 'commandPalette.navShell', keywords: 'shell terminal console' },
-  { id: 'git', labelKey: 'commandPalette.navGit', keywords: 'git diff branches' },
   { id: 'tasks', labelKey: 'commandPalette.navTasks', keywords: 'tasks taskmaster' },
 ];
 
@@ -69,6 +63,8 @@ function CommandPalette({
   const { toggleDarkMode } = useTheme();
   const navigate = useNavigate();
   const ops = usePaletteOps();
+  const preferences = useUiPreferences();
+  const { user } = useAuth();
 
   const page = pages.at(-1);
 
@@ -94,16 +90,11 @@ function CommandPalette({
 
   const showActions = !page || page === 'actions';
   const showSessions = !page || page === 'sessions';
-  const showFiles = !page || page === 'files';
-  const showCommits = !page || page === 'commits';
-  const showBranches = !page || page === 'branches' || page === 'actions';
+  const showFiles = preferences.showFilesTab && (!page || page === 'files');
 
   const sessions = useSessionsSource(projectId, open && showSessions);
   const messageMatches = useSessionMessageSearch(projectId, search, open && showSessions);
   const files = useFilesSource(projectId, open && showFiles);
-  const commits = useCommitsSource(projectId, open && showCommits);
-  const branches = useBranchesSource(projectId, open && showBranches);
-  const git = useGitActions(projectId);
 
   const sessionRows = React.useMemo(() => {
     if (!showSessions) return [];
@@ -153,9 +144,7 @@ function CommandPalette({
   const startNewChatDisabled = !selectedProject;
   const browseLimit = 5;
   const filesShown = page === 'files' ? files : files.slice(0, browseLimit);
-  const commitsShown = page === 'commits' ? commits : commits.slice(0, browseLimit);
   const sessionsShown = page === 'sessions' ? sessionRows : sessionRows.slice(0, browseLimit);
-  const branchesShown = page === 'branches' ? branches : branches.slice(0, browseLimit);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -217,7 +206,7 @@ function CommandPalette({
 
             {showActions && (
               <CommandGroup heading={t('commandPalette.groupNavigate')}>
-                {NAV_TABS.map((tab) => (
+                {NAV_TABS.filter((tab) => isWorkspaceTabVisible(tab.id, preferences, user?.role === 'admin')).map((tab) => (
                   <CommandItem
                     key={tab.id as string}
                     value={`${t(tab.labelKey)} ${tab.keywords}`}
@@ -226,32 +215,6 @@ function CommandPalette({
                     <span className="flex-1">{t(tab.labelKey)}</span>
                   </CommandItem>
                 ))}
-              </CommandGroup>
-            )}
-
-            {showActions && projectId && (
-              <CommandGroup heading={t('commandPalette.groupGit')}>
-                <CommandItem
-                  value={`${t('commandPalette.gitFetch')} fetch remote`}
-                  onSelect={() => run(() => { void git.fetch(); onShowTab?.('git'); })}
-                >
-                  <RefreshCw className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                  <span className="flex-1">{t('commandPalette.gitFetch')}</span>
-                </CommandItem>
-                <CommandItem
-                  value={`${t('commandPalette.gitPull')} pull merge upstream`}
-                  onSelect={() => run(() => { void git.pull(); onShowTab?.('git'); })}
-                >
-                  <ArrowDownToLine className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                  <span className="flex-1">{t('commandPalette.gitPull')}</span>
-                </CommandItem>
-                <CommandItem
-                  value={`${t('commandPalette.gitPush')} push origin remote`}
-                  onSelect={() => run(() => { void git.push(); onShowTab?.('git'); })}
-                >
-                  <ArrowUpFromLine className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                  <span className="flex-1">{t('commandPalette.gitPush')}</span>
-                </CommandItem>
               </CommandGroup>
             )}
 
@@ -311,44 +274,6 @@ function CommandPalette({
                 ))}
                 {!page && files.length > browseLimit && (
                   <BrowseAllItem label={t('commandPalette.browseAllFiles', { count: files.length })} onSelect={() => pushPage('files')} />
-                )}
-              </CommandGroup>
-            )}
-
-            {showCommits && projectId && commitsShown.length > 0 && (
-              <CommandGroup heading={t('commandPalette.groupCommits')}>
-                {commitsShown.map((c) => (
-                  <CommandItem
-                    key={c.hash}
-                    value={`${c.message} ${c.author} ${c.shortHash}`}
-                    onSelect={() => run(() => onShowTab?.('git'))}
-                  >
-                    <GitCommit className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                    <span className="font-mono text-xs text-muted-foreground">{c.shortHash}</span>
-                    <span className="flex-1 truncate">{c.message}</span>
-                    <span className="truncate text-xs text-muted-foreground">{c.author}</span>
-                  </CommandItem>
-                ))}
-                {!page && commits.length > browseLimit && (
-                  <BrowseAllItem label={t('commandPalette.browseAllCommits', { count: commits.length })} onSelect={() => pushPage('commits')} />
-                )}
-              </CommandGroup>
-            )}
-
-            {showBranches && projectId && branchesShown.length > 0 && (
-              <CommandGroup heading={t('commandPalette.groupBranches')}>
-                {branchesShown.map((b) => (
-                  <CommandItem
-                    key={`branch-${b.name}`}
-                    value={b.name}
-                    onSelect={() => run(() => { void git.checkout(b.name); onShowTab?.('git'); })}
-                  >
-                    <GitMerge className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                    <span className="flex-1 truncate">{t('commandPalette.switchTo', { name: b.name })}</span>
-                  </CommandItem>
-                ))}
-                {!page && branches.length > browseLimit && (
-                  <BrowseAllItem label={t('commandPalette.browseAllBranches', { count: branches.length })} onSelect={() => pushPage('branches')} />
                 )}
               </CommandGroup>
             )}

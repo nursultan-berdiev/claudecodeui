@@ -51,7 +51,7 @@ const keyEvent = (key: string) => {
   };
 };
 
-const setUp = async (typedInput: string) => {
+const setUp = async (typedInput: string, waitForFilter = true, expectedCommandCount = 2) => {
   const setInputCalls: string[] = [];
   const executedCommands: SlashCommand[] = [];
   const textarea = document.createElement('textarea');
@@ -75,7 +75,7 @@ const setUp = async (typedInput: string) => {
     { initialProps: { input: '' } },
   );
 
-  await waitFor(() => assert.equal(result.current.slashCommandsCount, 2));
+  await waitFor(() => assert.equal(result.current.slashCommandsCount, expectedCommandCount));
 
   // Mirror the composer: the textarea reports the typed text, then the hook is
   // told where the caret is so it can open and filter the menu.
@@ -86,13 +86,13 @@ const setUp = async (typedInput: string) => {
     result.current.handleCommandInputChange(typedInput, typedInput.length);
   });
 
-  await waitFor(() => {
-    assert.equal(result.current.showCommandMenu, true);
-    assert.deepEqual(
+  await waitFor(() => assert.equal(result.current.showCommandMenu, true));
+  if (waitForFilter) {
+    await waitFor(() => assert.deepEqual(
       result.current.filteredCommands.map((command) => command.name),
       [FIREWALL_COMMAND],
-    );
-  });
+    ));
+  }
 
   return { result, setInputCalls, executedCommands, textarea };
 };
@@ -122,6 +122,25 @@ afterEach(() => {
 });
 
 describe('slash command menu keyboard selection', () => {
+  it('lets a complete skill command submit without an extra completion Enter', async () => {
+    listSkills.mockResolvedValue(jsonResponse({ success: true, data: { skills: [{ name: 'check-claim', command: '/check-claim', description: 'Check lesson documents', scope: 'project' }] } }));
+    const { result, executedCommands, setInputCalls } = await setUp('/check-claim', false, 3);
+    const enter = keyEvent('Enter');
+    let handled = true;
+    act(() => { handled = result.current.handleCommandMenuKeyDown(enter.event); });
+    assert.equal(handled, false, 'the composer must submit the complete skill command');
+    assert.equal(enter.wasPrevented(), false);
+    assert.deepEqual(executedCommands, []);
+    assert.deepEqual(setInputCalls, []);
+  });
+
+  it('uses the typed command when Enter arrives before the suggestion debounce', async () => {
+    const { result, executedCommands } = await setUp(FIREWALL_COMMAND, false);
+    const enter = keyEvent('Enter');
+    act(() => { result.current.handleCommandMenuKeyDown(enter.event); });
+    assert.deepEqual(executedCommands.map((command) => command.name), [FIREWALL_COMMAND]);
+  });
+
   it('completes the command name on Tab instead of executing it', async () => {
     const { result, setInputCalls, executedCommands, textarea } = await setUp('/firewall-re');
 

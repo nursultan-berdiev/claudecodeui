@@ -2,12 +2,9 @@ import { memo, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  AlertTriangle,
   Bot,
   ClipboardList,
-  Hand,
   ShieldQuestion,
-  Smile,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -29,40 +26,22 @@ type ModeAppearance = {
  * Presentation only. Which modes exist for a provider comes from the backend
  * capability matrix, so an unknown mode still renders through UNKNOWN_MODE.
  */
-const MODE_APPEARANCE: Record<PermissionMode, ModeAppearance> = {
-  default: {
-    icon: Hand,
-    trigger: 'border-border/60 bg-muted/50 text-muted-foreground hover:bg-muted',
-    item: 'text-foreground',
-  },
+const MODE_APPEARANCE: Partial<Record<PermissionMode, ModeAppearance>> = {
   auto: {
     icon: Bot,
-    trigger:
-      'border-blue-300/60 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-600/40 dark:bg-blue-900/15 dark:text-blue-300 dark:hover:bg-blue-900/25',
-    item: 'text-blue-700 dark:text-blue-300',
-  },
-  acceptEdits: {
-    icon: Smile,
-    trigger:
-      'border-green-300/60 bg-green-50 text-green-700 hover:bg-green-100 dark:border-green-600/40 dark:bg-green-900/15 dark:text-green-300 dark:hover:bg-green-900/25',
-    item: 'text-green-700 dark:text-green-300',
-  },
-  bypassPermissions: {
-    icon: AlertTriangle,
-    trigger:
-      'border-orange-300/60 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-600/40 dark:bg-orange-900/15 dark:text-orange-300 dark:hover:bg-orange-900/25',
-    item: 'text-orange-600 dark:text-orange-400',
+    trigger: 'text-muted-foreground hover:bg-accent hover:text-foreground',
+    item: 'text-foreground',
   },
   plan: {
     icon: ClipboardList,
-    trigger: 'border-primary/20 bg-primary/5 text-primary hover:bg-primary/10',
-    item: 'text-primary',
+    trigger: 'text-muted-foreground hover:bg-accent hover:text-foreground',
+    item: 'text-foreground',
   },
 };
 
 const UNKNOWN_MODE: ModeAppearance = {
   icon: ShieldQuestion,
-  trigger: 'border-border/60 bg-muted/50 text-muted-foreground hover:bg-muted',
+  trigger: 'text-muted-foreground hover:bg-accent hover:text-foreground',
   item: 'text-foreground',
 };
 
@@ -112,13 +91,14 @@ function ComposerPermissionMenu({
           updateAnchor();
           setIsOpen((current) => !current);
         }}
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border transition-colors ${activeAppearance.trigger}`}
+        className={`flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full px-2.5 text-sm transition-colors ${activeAppearance.trigger}`}
         aria-haspopup="menu"
         aria-expanded={isOpen}
         aria-label={heading}
         title={t('input.clickToChangeMode')}
       >
         <ActiveIcon className="h-4 w-4" />
+        <span className="hidden sm:inline">{t(`codex.modes.${permissionMode}`)}</span>
       </button>
 
       {isOpen && anchor && createPortal(

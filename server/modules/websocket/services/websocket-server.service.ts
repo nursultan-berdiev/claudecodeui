@@ -7,6 +7,7 @@ import { verifyWebSocketClient } from '@/modules/websocket/services/websocket-au
 import { handlePluginWsProxy } from '@/modules/websocket/services/plugin-websocket-proxy.service.js';
 import { handleShellConnection } from '@/modules/websocket/services/shell-websocket.service.js';
 import { handleDesktopNotificationsConnection } from '@/modules/notifications/index.js';
+import { userDb } from '@/modules/database/index.js';
 import type { AuthenticatedWebSocketRequest } from '@/shared/types.js';
 
 type WebSocketServerDependencies = {
@@ -95,6 +96,27 @@ export function createWebSocketServer(
     attachWebSocketHeartbeat(ws);
 
     const incomingRequest = request as AuthenticatedWebSocketRequest;
+    const signedInUser = incomingRequest.user as {
+      userId?: number | string;
+      id?: number | string;
+      authVersion?: number;
+    } | undefined;
+    const signedInUserId = Number(signedInUser?.userId ?? signedInUser?.id);
+    if (Number.isSafeInteger(signedInUserId) && signedInUserId > 0) {
+      const authorizationCheck = setInterval(() => {
+        try {
+          const currentUser = userDb.getUserById(signedInUserId);
+          if (!currentUser || currentUser.auth_version !== (signedInUser?.authVersion ?? 0)) {
+            ws.close(1008, 'Account access changed');
+          }
+        } catch (error) {
+          console.error('Could not refresh websocket authorization', error);
+          ws.close(1011, 'Authorization unavailable');
+        }
+      }, 5_000);
+      ws.once('close', () => clearInterval(authorizationCheck));
+      ws.once('error', () => clearInterval(authorizationCheck));
+    }
     const url = incomingRequest.url ?? '/';
     const pathname = new URL(url, 'http://localhost').pathname;
 

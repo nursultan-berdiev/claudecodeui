@@ -8,6 +8,7 @@ import AgentSelectorSection from '@/modules/settings/tabs/agents-settings/sectio
 type ProviderAuthStatusByProvider = Record<AgentProvider, ProviderAuthStatus>;
 
 type AgentsSettingsTabProps = {
+  isAdmin: boolean;
   providerAuthStatus: ProviderAuthStatusByProvider;
   onProviderLogin: (provider: AgentProvider) => void;
   claudePermissions: ClaudePermissionsState;
@@ -21,6 +22,7 @@ type AgentsSettingsTabProps = {
 
 /** Rendered by Settings for the "agents" tab, hosting per-provider account, permission, MCP and skill settings. */
 export default function AgentsSettingsTab({
+  isAdmin,
   providerAuthStatus,
   onProviderLogin,
   claudePermissions,
@@ -34,10 +36,10 @@ export default function AgentsSettingsTab({
   const [selectedAgent, setSelectedAgent] = useState<AgentProvider>('claude');
   const [selectedCategory, setSelectedCategory] = useState<AgentCategory>('account');
   const visibleCategories = useMemo<AgentCategory[]>(() => (
-    selectedAgent === 'opencode'
+    !isAdmin ? ['account'] : selectedAgent === 'opencode'
       ? ['account', 'permissions', 'mcp']
-      : ['account', 'permissions', 'mcp', 'skills']
-  ), [selectedAgent]);
+      : ['account', 'permissions', 'mcp']
+  ), [isAdmin, selectedAgent]);
 
   const visibleAgents = useMemo<AgentProvider[]>(() => {
     return ['claude', 'cursor', 'codex', 'opencode'];
@@ -92,6 +94,7 @@ export default function AgentsSettingsTab({
         />
 
         <AgentCategoryContentSection
+          isAdmin={isAdmin}
           selectedAgent={selectedAgent}
           selectedCategory={selectedCategory}
           agentContextById={agentContextById}

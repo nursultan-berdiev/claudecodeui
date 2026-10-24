@@ -2,6 +2,7 @@ import { memo, useEffect, useRef } from 'react';
 import { Check, ChevronDown, ChevronRight, Edit3, Star, Trash2, X } from 'lucide-react';
 import type { TFunction } from 'i18next';
 
+import { useAuth } from '@/modules/auth';
 import { Button } from '@/shared/ui';
 import { cn } from '@/shared/utils';
 import type { LLMProvider, MCPServerStatus, Project, ProjectSession, SessionWithProvider, SidebarSessionSelection } from '@/shared/types';
@@ -109,6 +110,8 @@ function SidebarProjectItem({
   // Project identity is tracked by the DB-assigned `projectId` everywhere
   // after the projectName → projectId migration.
   const isSelected = selectedProject?.projectId === project.projectId;
+  // Projects are shared, so only administrators may rename or remove them; the server enforces the same rule.
+  const canManageProject = useAuth().user?.role === 'admin';
   const totalSessionCount = Number(project.sessionMeta?.total ?? sessions.length);
   const sessionCountDisplay = getSessionCountDisplay(project, sessions);
   const sessionCountLabel = `${sessionCountDisplay} session${totalSessionCount === 1 ? '' : 's'}`;
@@ -265,6 +268,7 @@ function SidebarProjectItem({
                   </>
                 ) : (
                   <>
+                    {canManageProject && (<>
                     <button
                       className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-500/10 active:scale-90 dark:border-red-800 dark:bg-red-900/30"
                       onClick={(event) => {
@@ -284,6 +288,7 @@ function SidebarProjectItem({
                     >
                       <Edit3 className="h-4 w-4 text-primary" />
                     </button>
+                    </>)}
 
                     <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted/30">
                       {isExpanded ? (
@@ -407,6 +412,7 @@ function SidebarProjectItem({
               </>
             ) : (
               <>
+                {canManageProject && (<>
                 <div
                   className="touch:opacity-100 flex h-6 w-6 cursor-pointer items-center justify-center rounded opacity-0 transition-all duration-200 hover:bg-accent group-hover:opacity-100"
                   onClick={(event) => {
@@ -427,6 +433,7 @@ function SidebarProjectItem({
                 >
                   <Trash2 className="h-3 w-3 text-red-600 dark:text-red-400" />
                 </div>
+                </>)}
                 {isExpanded ? (
                   <ChevronDown className="h-4 w-4 text-muted-foreground transition-colors group-hover:text-foreground" />
                 ) : (

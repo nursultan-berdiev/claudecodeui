@@ -5,6 +5,7 @@ import AccountContent from '@/modules/settings/tabs/agents-settings/sections/con
 import PermissionsContent from '@/modules/settings/tabs/agents-settings/sections/content/PermissionsContent';
 
 type AgentCategoryContentSectionProps = {
+  isAdmin: boolean;
   selectedAgent: AgentProvider;
   selectedCategory: AgentCategory;
   agentContextById: AgentContextByProvider;
@@ -19,6 +20,7 @@ type AgentCategoryContentSectionProps = {
 
 /** Rendered by AgentsSettingsTab to show the panel for the selected provider and category. */
 export default function AgentCategoryContentSection({
+  isAdmin,
   selectedAgent,
   selectedCategory,
   agentContextById,
@@ -34,6 +36,7 @@ export default function AgentCategoryContentSection({
     <div className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-4">
       {selectedCategory === 'account' && (
         <AccountContent
+          canLogin={isAdmin}
           agent={selectedAgent}
           authStatus={agentContextById[selectedAgent].authStatus}
           onLogin={agentContextById[selectedAgent].onLogin}

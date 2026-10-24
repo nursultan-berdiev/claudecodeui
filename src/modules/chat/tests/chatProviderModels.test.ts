@@ -48,6 +48,22 @@ const renderProviderState = async () => {
   );
 };
 
+test('only Plan and Auto are selectable, and legacy unattended choices remain Auto', async () => {
+  localStorage.setItem('permissionMode-last-claude', 'bypassPermissions');
+  const { result } = await renderProviderState();
+  await waitFor(() => assert.equal(result.current.permissionMode, 'auto'));
+  assert.deepEqual(result.current.availablePermissionModes, ['plan', 'auto']);
+  assert.equal(result.current.resolvePermissionModeForProvider('codex', 'acceptEdits'), 'auto');
+  assert.equal(result.current.resolvePermissionModeForProvider('codex', 'default'), 'plan');
+
+  act(() => result.current.selectPermissionMode('plan'));
+  assert.equal(localStorage.getItem('permissionMode-last-claude'), 'plan');
+  act(() => result.current.cyclePermissionMode());
+  assert.equal(result.current.permissionMode, 'auto');
+  act(() => result.current.cyclePermissionMode());
+  assert.equal(result.current.permissionMode, 'plan');
+});
+
 beforeEach(() => {
   localStorage.clear();
   // The preference store is a module-level singleton, so its in-memory copy

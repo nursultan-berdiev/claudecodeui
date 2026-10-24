@@ -1,7 +1,19 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-import type { Project, ProjectSession, QuickSettingsTab, SlashCommand } from '@/shared/types';
+import type { AppTab, Project, ProjectSession, UiPreferences } from '@/shared/types';
+
+//----------------- WORKSPACE NAVIGATION ------------
+
+/** Keeps workspace rendering and command navigation consistent with personal visibility settings. */
+export function isWorkspaceTabVisible(tab: AppTab, preferences: UiPreferences, isAdmin: boolean): boolean {
+  if (tab === 'git') return false;
+  if (tab === 'shell') return isAdmin && preferences.showTerminalTab;
+  if (tab === 'files') return preferences.showFilesTab;
+  return true;
+}
+
+// ---------------------------
 
 //----------------- DEPLOYMENT MODE ------------
 
@@ -10,6 +22,8 @@ import type { Project, ProjectSession, QuickSettingsTab, SlashCommand } from '@/
  * Read it to hide or gate features that only exist in one of the two deployments.
  */
 export const IS_PLATFORM = import.meta.env?.VITE_IS_PLATFORM === 'true';
+// Set by the Docker image build: the browser never shares a host with the CLIs it signs in.
+export const IS_CONTAINER_DEPLOYMENT = import.meta.env?.VITE_CLOUDCLI_CONTAINER_DEPLOYMENT === 'true';
 
 // ---------------------------
 
@@ -227,26 +241,3 @@ export const getPageTitle = (
   const displayName = selectedProject?.displayName?.trim();
   return displayName ? `${displayName} - ${DEFAULT_PAGE_TITLE}` : DEFAULT_PAGE_TITLE;
 };
-
-// ---------------------------
-
-//----------------- SLASH COMMANDS ------------
-
-/**
- * Whether a slash command is a provider skill (as opposed to a built-in or a
- * custom `.md` command). Skills are mapped with `type: 'skill'`; the metadata
- * check catches entries that only carry the skill marker there. Used wherever
- * commands are grouped or executed differently by kind.
- */
-export const isSkillCommand = (command: SlashCommand): boolean =>
-  command.type === 'skill' || command.metadata?.type === 'skill';
-
-// ---------------------------
-
-//----------------- QUICK SETTINGS PANEL ------------
-
-/** DOM id of a quick settings tab button; pairs with `getQuickSettingsTabPanelId` for aria-controls / aria-labelledby. */
-export const getQuickSettingsTabId = (tab: QuickSettingsTab): string => `quick-settings-tab-${tab}`;
-
-/** DOM id of the tabpanel a quick settings tab controls; pairs with `getQuickSettingsTabId`. */
-export const getQuickSettingsTabPanelId = (tab: QuickSettingsTab): string => `quick-settings-tabpanel-${tab}`;

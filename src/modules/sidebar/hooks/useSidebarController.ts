@@ -109,7 +109,7 @@ export function useSidebarController({
   // same rows (still on screen until the first settles) from sending them again.
   const sessionIdsBeingDeletedRef = useRef<Set<string>>(new Set());
   const [showVersionModal, setShowVersionModal] = useState(false);
-  const [searchMode, setSearchMode] = useState<SidebarSearchMode>('projects');
+  const [searchMode, setSearchMode] = useState<SidebarSearchMode>('conversations');
   const [conversationResults, setConversationResults] = useState<ConversationSearchResults | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchProgress, setSearchProgress] = useState<SearchProgress | null>(null);
@@ -229,7 +229,9 @@ export function useSidebarController({
     }
   }, []);
 
-  const fetchRecentConversationsPage = useCallback(async (offset: number, append: boolean) => {
+  // `keepLoadedTail` refreshes the first page without dropping older pages the
+  // user already loaded; the background refresh on session activity uses it.
+  const fetchRecentConversationsPage = useCallback(async (offset: number, append: boolean, keepLoadedTail = false) => {
     const requestSequence = ++recentConversationsSeqRef.current;
     if (append) {
       setIsLoadingMoreRecentConversations(true);
@@ -255,7 +257,11 @@ export function useSidebarController({
 
       setRecentConversations((previous) => {
         if (!append) {
-          return conversations;
+          if (!keepLoadedTail || previous.length <= conversations.length) {
+            return conversations;
+          }
+          const headIds = new Set(conversations.map((conversation) => conversation.sessionId));
+          return [...conversations, ...previous.filter((conversation) => !headIds.has(conversation.sessionId))];
         }
 
         const existingIds = new Set(previous.map((conversation) => conversation.sessionId));
@@ -265,7 +271,8 @@ export function useSidebarController({
         ];
       });
       setRecentConversationsTotal(Number(payload.data?.total ?? conversations.length));
-      setRecentConversationsHasMore(Boolean(payload.data?.hasMore));
+      // A head refresh keeps older loaded pages, so it must not hide "load older" for them.
+      setRecentConversationsHasMore((previous) => Boolean(payload.data?.hasMore) || (keepLoadedTail && previous));
     } catch (error) {
       if (requestSequence !== recentConversationsSeqRef.current) {
         return;
@@ -283,6 +290,17 @@ export function useSidebarController({
   const reloadRecentConversations = useCallback(() => {
     void fetchRecentConversationsPage(0, false);
   }, [fetchRecentConversationsPage]);
+  useEffect(() => {
+    const refresh = () => {
+      eventSourceRef.current?.close();
+      searchSeqRef.current += 1;
+      setSearchFilter(''); setDebouncedSearchQuery(''); setConversationResults(null);
+      setRecentConversations([]); setArchivedSessions([]);
+      reloadRecentConversations(); void fetchArchivedSessions();
+    };
+    window.addEventListener('company-access-changed', refresh);
+    return () => window.removeEventListener('company-access-changed', refresh);
+  }, [fetchArchivedSessions, reloadRecentConversations]);
 
   const loadMoreRecentConversations = useCallback(() => {
     if (isLoadingMoreRecentConversations || !recentConversationsHasMore) {
@@ -333,6 +351,39 @@ export function useSidebarController({
 
     reloadRecentConversations();
   }, [debouncedSearchQuery, reloadRecentConversations, searchMode]);
+
+  // The Chats list is a server page, while new and updated sessions arrive as
+  // `projects` patches. Their count and newest timestamp say when it went stale.
+  const sessionActivitySignature = useMemo(() => {
+    let count = 0;
+    let newest = '';
+    for (const project of projects) {
+      for (const session of project.sessions ?? []) {
+        count += 1;
+        const stamp = session.lastActivity || session.updated_at || session.createdAt || session.created_at || '';
+        if (stamp > newest) newest = stamp;
+      }
+    }
+    return `${count}|${newest}`;
+  }, [projects]);
+  const lastSessionActivitySignatureRef = useRef(sessionActivitySignature);
+
+  // Re-fetched a second after activity settles, so a streaming reply that
+  // touches its session on every message costs one request, not one per message.
+  useEffect(() => {
+    if (lastSessionActivitySignatureRef.current === sessionActivitySignature) {
+      return;
+    }
+    lastSessionActivitySignatureRef.current = sessionActivitySignature;
+    if (searchMode !== 'conversations' || debouncedSearchQuery.length >= 2) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void fetchRecentConversationsPage(0, false, true);
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [debouncedSearchQuery, fetchRecentConversationsPage, searchMode, sessionActivitySignature]);
 
   // The Conversations list is only fetched when its tab opens, while `projects`
   // is patched the moment a session is renamed from the workspace header. Fold

@@ -1,6 +1,8 @@
 import { useTranslation } from 'react-i18next';
 
 import { useTheme } from '@/shared/context/ThemeContext';
+import { useSetUiPreference, useUiPreferences } from '@/shared/context/UiPreferencesContext';
+import { useAuth } from '@/modules/auth';
 import type { CodeEditorSettingsState, ProjectSortOrder, ThemeMode } from '@/shared/types';
 import { LanguageSelector } from '@/modules/i18n';
 import SettingsCard from '@/modules/settings/SettingsCard';
@@ -18,7 +20,7 @@ type AppearanceSettingsTabProps = {
   onCodeEditorFontSizeChange: (value: string) => void;
 };
 
-/** Rendered by Settings for the "appearance" tab, covering theme, project sorting and code editor preferences. */
+/** Rendered by Settings for theme, chat display, workspace visibility, project sorting and code editor preferences. */
 export default function AppearanceSettingsTab({
   projectSortOrder,
   onProjectSortOrderChange,
@@ -30,6 +32,9 @@ export default function AppearanceSettingsTab({
 }: AppearanceSettingsTabProps) {
   const { t } = useTranslation('settings');
   const { themeMode, setThemeMode } = useTheme();
+  const { showTerminalTab, showFilesTab, showReasoning, showRawParameters, sendByCtrlEnter } = useUiPreferences();
+  const setPreference = useSetUiPreference();
+  const { user } = useAuth();
 
   return (
     <div className="space-y-8">
@@ -56,6 +61,65 @@ export default function AppearanceSettingsTab({
       <SettingsSection title={t('mainTabs.appearance')}>
         <SettingsCard>
           <LanguageSelector />
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection title={t('appearanceSettings.chat.title')}>
+        <SettingsCard divided>
+          <SettingsRow label={t('quickSettings.showThinking')}>
+            <SettingsToggle
+              checked={showReasoning}
+              onChange={(value) => setPreference('showReasoning', value)}
+              ariaLabel={t('quickSettings.showThinking')}
+            />
+          </SettingsRow>
+          {/* Raw tool input is a debugging aid for whoever runs the agents. */}
+          {user?.role === 'admin' && (
+            <SettingsRow label={t('quickSettings.showRawParameters')}>
+              <SettingsToggle
+                checked={showRawParameters}
+                onChange={(value) => setPreference('showRawParameters', value)}
+                ariaLabel={t('quickSettings.showRawParameters')}
+              />
+            </SettingsRow>
+          )}
+          <SettingsRow
+            label={t('quickSettings.sendByCtrlEnter')}
+            description={t('quickSettings.sendByCtrlEnterDescription')}
+          >
+            <SettingsToggle
+              checked={sendByCtrlEnter}
+              onChange={(value) => setPreference('sendByCtrlEnter', value)}
+              ariaLabel={t('quickSettings.sendByCtrlEnter')}
+            />
+          </SettingsRow>
+        </SettingsCard>
+      </SettingsSection>
+
+      <SettingsSection title={t('appearanceSettings.workspaceTabs.title')}>
+        <SettingsCard divided>
+          {user?.role === 'admin' && (
+            <SettingsRow
+              label={t('appearanceSettings.workspaceTabs.terminal.label')}
+              description={t('appearanceSettings.workspaceTabs.terminal.description')}
+            >
+              <SettingsToggle
+                checked={showTerminalTab}
+                onChange={(value) => setPreference('showTerminalTab', value)}
+                ariaLabel={t('appearanceSettings.workspaceTabs.terminal.label')}
+              />
+            </SettingsRow>
+          )}
+          <SettingsRow
+            label={t('appearanceSettings.workspaceTabs.files.label')}
+            description={t('appearanceSettings.workspaceTabs.files.description')}
+          >
+            <SettingsToggle
+              checked={showFilesTab}
+              onChange={(value) => setPreference('showFilesTab', value)}
+              ariaLabel={t('appearanceSettings.workspaceTabs.files.label')}
+            />
+          </SettingsRow>
         </SettingsCard>
       </SettingsSection>
 

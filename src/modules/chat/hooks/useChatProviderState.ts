@@ -11,6 +11,7 @@ import type { PendingPermissionRequest, PermissionMode,
   ProviderModelsDefinition } from '@/shared/types';
 import { DEFAULT_EFFORT_VALUE } from '@/shared/constants';
 import { readSelectedProvider, writeSelectedProvider } from '@/shared/selectedProvider';
+import { useSelectedProvider } from '@/shared/hooks/useSelectedProvider';
 
 const FALLBACK_PROVIDER_EFFORT_VALUES: Partial<Record<LLMProvider, readonly string[]>> = {
   // Superset used only before the model catalog loads; `ultracode` belongs to the
@@ -47,11 +48,15 @@ const providerModelStorageKey = (provider: LLMProvider): string => `${provider}-
  * first paint and when the capabilities request fails.
  */
 const FALLBACK_PERMISSION_MODES: Record<LLMProvider, PermissionMode[]> = {
-  claude: ['default', 'auto', 'acceptEdits', 'bypassPermissions', 'plan'],
-  cursor: ['default', 'acceptEdits', 'bypassPermissions', 'plan'],
-  codex: ['default', 'acceptEdits', 'bypassPermissions'],
-  opencode: ['default', 'acceptEdits', 'bypassPermissions', 'plan'],
+  claude: ['plan', 'auto'],
+  cursor: ['auto'],
+  codex: ['plan', 'auto'],
+  opencode: ['plan', 'auto'],
 };
+
+function normalizeComposerPermissionMode(mode: string): PermissionMode {
+  return ['auto', 'acceptEdits', 'bypassPermissions'].includes(mode) ? 'auto' : 'plan';
+}
 
 type ProviderCapabilities = {
   provider: LLMProvider;
@@ -125,7 +130,8 @@ const getSessionSelectionKey = (provider: LLMProvider, sessionId: string): strin
 );
 
 export function useChatProviderState({ selectedSession, selectedProject: _selectedProject }: UseChatProviderStateArgs) {
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
+  // Restores the session's choice, using Plan when no previous mode has been saved.
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>('plan');
   const [pendingPermissionRequests, setPendingPermissionRequests] = useState<PendingPermissionRequest[]>([]);
   // The provider the composer sends under. Held here rather than read from
   // storage per render because switching it has to reset the model menu, the
@@ -264,18 +270,19 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
   const getPermissionModesForProvider = useCallback((targetProvider: LLMProvider): PermissionMode[] => {
     const capabilityModes = providerCapabilities?.[targetProvider]?.permissionModes;
     if (capabilityModes && capabilityModes.length > 0) {
-      return capabilityModes as PermissionMode[];
+      return [...new Set(capabilityModes.map(normalizeComposerPermissionMode))];
     }
-    return FALLBACK_PERMISSION_MODES[targetProvider] ?? ['default'];
+    return FALLBACK_PERMISSION_MODES[targetProvider] ?? ['plan'];
   }, [providerCapabilities]);
 
   const getDefaultPermissionModeForProvider = useCallback((targetProvider: LLMProvider): PermissionMode => {
     const modes = getPermissionModesForProvider(targetProvider);
-    const capabilityDefault = providerCapabilities?.[targetProvider]?.defaultPermissionMode as PermissionMode | undefined;
+    const storedDefault = providerCapabilities?.[targetProvider]?.defaultPermissionMode;
+    const capabilityDefault = storedDefault ? normalizeComposerPermissionMode(storedDefault) : undefined;
     if (capabilityDefault && modes.includes(capabilityDefault)) {
       return capabilityDefault;
     }
-    return modes[0] ?? 'default';
+    return modes[0] ?? 'plan';
   }, [getPermissionModesForProvider, providerCapabilities]);
 
   const getSupportsEffortForProvider = useCallback((targetProvider: LLMProvider): boolean => {
@@ -286,17 +293,15 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
     return Boolean(FALLBACK_PROVIDER_EFFORT_VALUES[targetProvider]?.length);
   }, [providerCapabilities]);
 
-  const pickStoredOrCurrent = (
+  // Without a stored choice the server's default wins: the static fallback only
+  // covers first paint and goes stale as providers retire models.
+  const pickStoredOrDefault = (
     storageKey: string,
-    current: string,
     def: ProviderModelsDefinition,
   ): string => {
     const stored = localStorage.getItem(storageKey);
     if (stored && def.OPTIONS.some((o) => o.value === stored)) {
       return stored;
-    }
-    if (current && def.OPTIONS.some((o) => o.value === current)) {
-      return current;
     }
     return def.DEFAULT;
   };
@@ -370,7 +375,7 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
 
       const storageKey = providerModelStorageKey(targetProvider);
       const currentModel = providerModels[targetProvider];
-      const nextModel = pickStoredOrCurrent(storageKey, currentModel, catalog);
+      const nextModel = pickStoredOrDefault(storageKey, catalog);
 
       if (nextModel !== currentModel) {
         reconciledModels[targetProvider] = nextModel;
@@ -417,9 +422,9 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
     // session id appears.
     const providerSavedMode = localStorage.getItem(`permissionMode-last-${provider}`) as PermissionMode | null;
     const savedMode = [sessionSavedMode, providerSavedMode].find(
-      (mode): mode is PermissionMode => Boolean(mode && validModes.includes(mode)),
+      (mode): mode is PermissionMode => Boolean(mode && validModes.includes(normalizeComposerPermissionMode(mode))),
     );
-    setPermissionMode(savedMode ?? getDefaultPermissionModeForProvider(provider));
+    setPermissionMode(savedMode ? normalizeComposerPermissionMode(savedMode) : getDefaultPermissionModeForProvider(provider));
   }, [selectedSession?.id, provider, getDefaultPermissionModeForProvider, getPermissionModesForProvider]);
 
   useEffect(() => {
@@ -430,6 +435,16 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
     setProvider(selectedSession.__provider);
     writeSelectedProvider(selectedSession.__provider);
   }, [provider, selectedSession]);
+
+  // Until a session owns the composer, the stored choice decides: the New chat dialog
+  // and the server copy of the preferences both write it after this hook has mounted.
+  const storedProvider = useSelectedProvider();
+  const hasSession = Boolean(selectedSession);
+  useEffect(() => {
+    if (!hasSession) {
+      setProvider(storedProvider);
+    }
+  }, [hasSession, storedProvider]);
 
   // Permission prompts belong to a session, not to the transient provider
   // selection that is synchronized after navigation.
@@ -477,8 +492,9 @@ export function useChatProviderState({ selectedSession, selectedProject: _select
     requestedMode: PermissionMode | string,
   ): PermissionMode => {
     const validModes = getPermissionModesForProvider(targetProvider);
-    return validModes.includes(requestedMode as PermissionMode)
-      ? requestedMode as PermissionMode
+    const normalizedMode = normalizeComposerPermissionMode(requestedMode);
+    return validModes.includes(normalizedMode)
+      ? normalizedMode
       : getDefaultPermissionModeForProvider(targetProvider);
   }, [getDefaultPermissionModeForProvider, getPermissionModesForProvider]);
 

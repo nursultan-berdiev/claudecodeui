@@ -41,7 +41,8 @@ export const authenticatedFetch = (
     if (refreshedToken) {
       storeAuthToken(refreshedToken);
     }
-    if (response.headers.get('X-Auth-Error')) {
+    // A request still carrying a token that has since been replaced must not end the newer session.
+    if (response.headers.get('X-Auth-Error') && getStoredAuthToken() === token) {
       expireAuthSession();
     }
     return response;
@@ -157,6 +158,18 @@ const pluginAssetPath = (pluginName: string, assetFile: string) =>
 // import a named method instead of assembling URLs of their own.
 
 export const api = {
+  company: {
+    departments: () => get('/api/company/departments'),
+    createDepartment: (input: unknown) => post('/api/company/departments', input),
+    updateDepartment: (id: number, input: unknown) => put(`/api/company/departments/${id}`, input),
+    deleteDepartment: (id: number) => del(`/api/company/departments/${id}`),
+    chatSharing: (id: string) => get(`/api/company/chats/${encodeURIComponent(id)}/sharing`),
+    updateChatSharing: (id: string, sharing: unknown) => put(`/api/company/chats/${encodeURIComponent(id)}/sharing`, sharing),
+    skills: () => get('/api/company/skills'),
+    createSkill: (input: unknown) => post('/api/company/skills', input),
+    updateSkill: (id: string, input: unknown) => put(`/api/company/skills/${encodeURIComponent(id)}`, input),
+    deleteSkill: (id: string) => del(`/api/company/skills/${encodeURIComponent(id)}`),
+  },
   // Auth endpoints (no token required)
   auth: {
     status: () => fetch('/api/auth/status'),
@@ -172,6 +185,16 @@ export const api = {
     }),
     refresh: () => post('/api/auth/refresh'),
     user: () => get('/api/auth/user'),
+    listUsers: () => get('/api/auth/users'),
+    listAudit: () => get('/api/auth/audit'),
+    createUser: (username: string, password: string, role: 'admin' | 'member') =>
+      post('/api/auth/users', { username, password, role }),
+    updateUser: (id: number, changes: { role?: 'admin' | 'member'; isActive?: boolean }) =>
+      patch(`/api/auth/users/${id}`, changes),
+    resetUserPassword: (id: number, password: string, requireChange: boolean) =>
+      post(`/api/auth/users/${id}/password`, { password, requireChange }),
+    changePassword: (currentPassword: string, newPassword: string) =>
+      post('/api/auth/password', { currentPassword, newPassword }),
   },
 
   // Protected endpoints

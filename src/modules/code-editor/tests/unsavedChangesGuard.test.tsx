@@ -5,6 +5,12 @@ import { test, vi } from 'vitest';
 
 import type { CodeEditorFile, Project } from '@/shared/types';
 
+// Editor assertions must not depend on translation initialization in imported navigation modules.
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...await importOriginal<Record<string, unknown>>(),
+  useTranslation: () => ({ t: (key: string, options?: string | { defaultValue?: string }) => typeof options === 'string' ? options : options?.defaultValue ?? key }),
+}));
+
 /**
  * Regression guard for #870: the editor closed on Escape, the header X, or a
  * click on another file and silently threw away whatever had been typed. A

@@ -1,7 +1,8 @@
-import { Bell, Bot, GitBranch, Info, Key, ListChecks, Mic, MonitorPlay, Palette, Puzzle } from 'lucide-react';
+import { Bell, Bot, Info, Key, KeyRound, ListChecks, Mic, MonitorPlay, Palette, Puzzle, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
-import { cn } from '@/shared/utils';
+import { useAuth } from '@/modules/auth';
+import { cn, IS_PLATFORM } from '@/shared/utils';
 import { PillBar, Pill } from '@/shared/ui';
 import type { SettingsMainTab } from '@/shared/types';
 
@@ -19,26 +20,32 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { id: 'agents', labelKey: 'mainTabs.agents', icon: Bot },
   { id: 'appearance', labelKey: 'mainTabs.appearance', icon: Palette },
-  { id: 'git', labelKey: 'mainTabs.git', icon: GitBranch },
+  { id: 'account', labelKey: 'mainTabs.account', icon: KeyRound },
   { id: 'api', labelKey: 'mainTabs.apiTokens', icon: Key },
   { id: 'voice', labelKey: 'mainTabs.voice', icon: Mic },
   { id: 'tasks', labelKey: 'mainTabs.tasks', icon: ListChecks },
   { id: 'browser', labelKey: 'mainTabs.browser', icon: MonitorPlay },
   { id: 'plugins', labelKey: 'mainTabs.plugins', icon: Puzzle },
   { id: 'notifications', labelKey: 'mainTabs.notifications', icon: Bell },
+  { id: 'users', labelKey: 'mainTabs.users', icon: Users },
+  { id: 'departments', labelKey: 'mainTabs.departments', icon: Users },
   { id: 'about', labelKey: 'mainTabs.about', icon: Info },
 ];
 
 /** Rendered by Settings to switch between the settings dialog's main sections. */
 export default function SettingsSidebar({ activeTab, onChange }: SettingsSidebarProps) {
   const { t } = useTranslation('settings');
+  const { user } = useAuth();
+  const visibleItems = NAV_ITEMS.filter((item) =>
+    (user?.role === 'admin' || !['users', 'plugins', 'departments'].includes(item.id))
+    && !(IS_PLATFORM && item.id === 'account'));
 
   return (
     <>
       {/* Desktop sidebar */}
       <aside className="hidden w-56 flex-shrink-0 border-r border-border bg-muted/30 md:flex md:flex-col">
         <nav className="flex flex-col gap-1 p-3">
-          {NAV_ITEMS.map((item) => {
+          {visibleItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
 
@@ -64,7 +71,7 @@ export default function SettingsSidebar({ activeTab, onChange }: SettingsSidebar
       {/* Mobile horizontal nav — pill bar */}
       <div className="flex-shrink-0 border-b border-border px-3 py-2 md:hidden">
         <PillBar className="scrollbar-hide w-full overflow-x-auto">
-          {NAV_ITEMS.map((item) => {
+          {visibleItems.map((item) => {
             const Icon = item.icon;
 
             return (

@@ -24,6 +24,7 @@ import {
     authenticateToken,
     authenticateWebSocket,
     authRoutes,
+    requireAdmin,
     validateApiKey,
 } from './modules/auth/index.js';
 import { taskmasterRoutes } from './modules/taskmaster/index.js';
@@ -51,6 +52,9 @@ import browserUseRoutes from './modules/browser-use/browser-use.routes.js';
 import { assetsRoutes } from './modules/assets/index.js';
 import { fileTreeRoutes } from './modules/file-tree/index.js';
 import { worktreesRoutes } from './modules/worktrees/index.js';
+import { createCompanyRouter } from './modules/company/index.js';
+import { providerSkillsService } from './modules/providers/index.js';
+import { connectedClients, WS_OPEN_STATE } from './modules/websocket/index.js';
 import browserUseMcpRoutes from './modules/browser-use/browser-use-mcp.routes.js';
 import { browserUseService } from './modules/browser-use/browser-use.service.js';
 import { initializeDatabase, sessionsDb } from './modules/database/index.js';
@@ -74,6 +78,9 @@ const RUNNING_VERSION = (() => {
         return null;
     }
 })();
+if (process.env.CLOUDCLI_CONTAINER_DEPLOYMENT === 'true' && process.env.WORKSPACES_ROOT) {
+    await fsPromises.mkdir(path.join(process.env.WORKSPACES_ROOT, 'chats'), { recursive: true });
+}
 const systemRoutes = createSystemModule({
     appRoot: APP_ROOT,
     installMode,
@@ -153,6 +160,14 @@ app.use('/api', validateApiKey);
 
 // Authentication routes (public)
 app.use('/api/auth', authRoutes);
+app.use('/api/company', authenticateToken, createCompanyRouter({
+    discoverSkills: (provider) => providerSkillsService.listProviderSkills(provider as any),
+    onAccessChanged: () => {
+        for (const client of connectedClients) {
+            if (client.readyState === WS_OPEN_STATE) client.send(JSON.stringify({ kind: 'company_access_changed' }));
+        }
+    },
+}));
 
 // File Tree API Routes (protected)
 app.use('/api/file-tree', authenticateToken, fileTreeRoutes);
@@ -178,7 +193,7 @@ app.use('/api/commands', authenticateToken, commandsRoutes);
 // Settings API Routes (protected)
 app.use('/api/settings', authenticateToken, settingsRoutes);
 
-app.use('/api/system', authenticateToken, systemRoutes);
+app.use('/api/system', authenticateToken, requireAdmin, systemRoutes);
 
 app.use('/api/notifications', authenticateToken, notificationRoutes);
 
@@ -186,7 +201,7 @@ app.use('/api/notifications', authenticateToken, notificationRoutes);
 app.use('/api/user', authenticateToken, userRoutes);
 
 // Plugins API Routes (protected)
-app.use('/api/plugins', authenticateToken, pluginsRoutes);
+app.use('/api/plugins', authenticateToken, requireAdmin, pluginsRoutes);
 
 // Browser MCP bridge API (local token protected)
 app.use('/api/browser-use-mcp', browserUseMcpRoutes);

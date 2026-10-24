@@ -38,15 +38,15 @@ type ProviderCapabilities = {
 
 /**
  * The capability matrix mirrors what each runtime actually implements today:
- * - permission modes match the option sets accepted by each CLI/SDK.
+ * - Plan and Auto are application presets mapped onto each CLI/SDK at dispatch.
  * - only the Claude SDK integration surfaces interactive permission requests.
  * - Cursor has no token usage endpoint support (its store.db has no usage rows).
  */
 const PROVIDER_CAPABILITIES: Record<LLMProvider, ProviderCapabilities> = {
   claude: {
     provider: 'claude',
-    permissionModes: ['default', 'auto', 'acceptEdits', 'bypassPermissions', 'plan'],
-    defaultPermissionMode: 'default',
+    permissionModes: ['plan', 'auto'],
+    defaultPermissionMode: 'plan',
     supportsImages: true,
     supportsFiles: true,
     supportsAbort: true,
@@ -60,8 +60,9 @@ const PROVIDER_CAPABILITIES: Record<LLMProvider, ProviderCapabilities> = {
   },
   cursor: {
     provider: 'cursor',
-    permissionModes: ['default', 'acceptEdits', 'bypassPermissions', 'plan'],
-    defaultPermissionMode: 'default',
+    // This adapter has no read-only plan support; do not advertise a mode it cannot enforce.
+    permissionModes: ['auto'],
+    defaultPermissionMode: 'auto',
     supportsImages: true,
     supportsFiles: true,
     supportsAbort: true,
@@ -73,8 +74,8 @@ const PROVIDER_CAPABILITIES: Record<LLMProvider, ProviderCapabilities> = {
   },
   codex: {
     provider: 'codex',
-    permissionModes: ['default', 'acceptEdits', 'bypassPermissions'],
-    defaultPermissionMode: 'default',
+    permissionModes: ['plan', 'auto'],
+    defaultPermissionMode: 'plan',
     supportsImages: true,
     supportsFiles: true,
     supportsAbort: true,
@@ -93,8 +94,8 @@ const PROVIDER_CAPABILITIES: Record<LLMProvider, ProviderCapabilities> = {
     // Mapped by the runtime onto OpenCode's controls: `--agent plan` (plan),
     // `--auto` (bypassPermissions) and the OPENCODE_PERMISSION env var
     // (acceptEdits). See resolveOpenCodePermissionOptions in the OpenCode runtime adapter.
-    permissionModes: ['default', 'acceptEdits', 'bypassPermissions', 'plan'],
-    defaultPermissionMode: 'default',
+    permissionModes: ['plan', 'auto'],
+    defaultPermissionMode: 'plan',
     supportsImages: true,
     supportsFiles: true,
     supportsAbort: true,

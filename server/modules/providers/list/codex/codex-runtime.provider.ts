@@ -22,6 +22,7 @@ import {
   createNormalizedMessage,
 } from '@/shared/index.js';
 import { notifyRunFailed, notifyRunStopped } from '@/modules/notifications/index.js';
+import { readAgentInstructions } from '@/shared/agent-instructions.js';
 import type { AnyRecord, ProviderRuntimeContext, ProviderRuntimeWriter } from '@/shared/index.js';
 
 type ActiveCodexSession = {
@@ -229,6 +230,16 @@ function transformCodexEvent(event: AnyRecord): AnyRecord {
  */
 function mapPermissionModeToCodexOptions(permissionMode: string): Pick<ThreadOptions, 'sandboxMode' | 'approvalPolicy'> {
   switch (permissionMode) {
+    case 'plan':
+      return {
+        sandboxMode: 'read-only',
+        approvalPolicy: 'never'
+      };
+    case 'auto':
+      return {
+        sandboxMode: 'danger-full-access',
+        approvalPolicy: 'never'
+      };
     case 'acceptEdits':
       return {
         sandboxMode: 'workspace-write',
@@ -308,7 +319,8 @@ async function queryCodex(
   const sessionKey = () => sessionId || capturedSessionId || null;
 
   try {
-    codex = new Codex();
+    const agentInstructions = readAgentInstructions();
+    codex = new Codex(agentInstructions ? { config: { developer_instructions: agentInstructions } } : undefined);
 
     const threadOptions: ThreadOptions = {
       workingDirectory,

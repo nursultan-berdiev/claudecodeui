@@ -3,7 +3,7 @@ import { Activity, Archive, Folder, MessageSquare, RotateCcw, Search, Trash2 } f
 import type { TFunction } from 'i18next';
 
 import { LLMProviderLogo, ScrollArea } from '@/shared/ui';
-import type { ArchivedProjectListItem, ArchivedSessionListItem, ConversationSearchResults, Project, RecentConversationListItem, ReleaseInfo, SearchProgress, SidebarProjectListProps, SidebarSearchMode } from '@/shared/types';
+import type { ArchivedProjectListItem, ArchivedSessionListItem, ConversationSearchResults, RecentConversationListItem, ReleaseInfo, SearchProgress, SidebarProjectListProps, SidebarSearchMode } from '@/shared/types';
 import { formatCompactAge, getAllSessions } from '@/modules/sidebar/utils/sidebarProjectFormatting';
 import SidebarFooter from '@/modules/sidebar/SidebarFooter';
 import SidebarHeader from '@/modules/sidebar/SidebarHeader';
@@ -85,14 +85,12 @@ type SidebarContentProps = {
   isPWA: boolean;
   isMobile: boolean;
   isLoading: boolean;
-  projects: Project[];
   runningSessionsCount: number;
   archivedProjects: ArchivedProjectListItem[];
   archivedSessions: ArchivedSessionListItem[];
   archivedSessionsCount: number;
   isArchivedSessionsLoading: boolean;
   recentConversations: RecentConversationListItem[];
-  recentConversationsTotal: number;
   recentConversationsHasMore: boolean;
   isRecentConversationsLoading: boolean;
   isLoadingMoreRecentConversations: boolean;
@@ -122,7 +120,6 @@ type SidebarContentProps = {
   restartRequired: boolean;
   releaseInfo: ReleaseInfo | null;
   latestVersion: string | null;
-  currentVersion: string;
   onShowVersionModal: () => void;
   onShowSettings: () => void;
   projectListProps: SidebarProjectListProps;
@@ -134,14 +131,12 @@ export default function SidebarContent({
   isPWA,
   isMobile,
   isLoading,
-  projects,
   runningSessionsCount,
   archivedProjects,
   archivedSessions,
   archivedSessionsCount,
   isArchivedSessionsLoading,
   recentConversations,
-  recentConversationsTotal,
   recentConversationsHasMore,
   isRecentConversationsLoading,
   isLoadingMoreRecentConversations,
@@ -169,7 +164,6 @@ export default function SidebarContent({
   restartRequired,
   releaseInfo,
   latestVersion,
-  currentVersion,
   onShowVersionModal,
   onShowSettings,
   projectListProps,
@@ -186,17 +180,13 @@ export default function SidebarContent({
 
   return (
     <div
-      className="flex h-full flex-col bg-background/80 backdrop-blur-sm md:w-full md:select-none"
-      style={{}}
+      className="flex h-full flex-col bg-sidebar md:w-full md:select-none"
     >
       <SidebarHeader
         isPWA={isPWA}
         isMobile={isMobile}
         isLoading={isLoading}
-        projectsCount={projects.length}
         runningSessionsCount={runningSessionsCount}
-        archivedSessionsCount={archivedSessionsCount}
-        isArchivedSessionsLoading={isArchivedSessionsLoading}
         searchFilter={searchFilter}
         onSearchFilterChange={onSearchFilterChange}
         onClearSearchFilter={onClearSearchFilter}
@@ -206,6 +196,7 @@ export default function SidebarContent({
         isRefreshing={isRefreshing}
         onCreateProject={onCreateProject}
         onCollapseSidebar={onCollapseSidebar}
+        onNewSession={projectListProps.onNewSession}
         t={t}
       />
 
@@ -378,7 +369,6 @@ export default function SidebarContent({
         ) : searchMode === 'conversations' ? (
           <SidebarRecentConversations
             conversations={recentConversations}
-            total={recentConversationsTotal}
             hasMore={recentConversationsHasMore}
             isLoading={isRecentConversationsLoading}
             isLoadingMore={isLoadingMoreRecentConversations}
@@ -691,7 +681,6 @@ export default function SidebarContent({
           restartRequired={restartRequired}
           releaseInfo={releaseInfo}
           latestVersion={latestVersion}
-          currentVersion={currentVersion}
           onShowVersionModal={onShowVersionModal}
           onShowSettings={onShowSettings}
           t={t}

@@ -5,7 +5,7 @@ import {
   readStoredUiPreferences,
   uiPreferencesReducer,
 } from '@/shared/uiPreferences';
-import type { UiPreferenceKey, UiPreferences } from '@/shared/uiPreferences';
+import type { UiPreferenceKey, UiPreferences } from '@/shared/types';
 import { subscribeToUserPreferences, writeUserPreference } from '@/shared/userSettings';
 
 type UiPreferenceActions = {
@@ -16,8 +16,8 @@ const UiPreferencesStateContext = createContext<UiPreferences | null>(null);
 const UiPreferencesActionsContext = createContext<UiPreferenceActions | null>(null);
 
 /**
- * Mounted once by App; owns the boolean UI preferences that the sidebar, quick
- * settings, the workspace and the voice controls all read.
+ * Mounted once by App; owns the boolean UI preferences that the sidebar, the
+ * settings dialog, the workspace and the voice controls all read.
  *
  * This used to be a plain hook, which meant every call site held its own reducer
  * and they reconciled after the fact through a `ui-preferences:sync` CustomEvent

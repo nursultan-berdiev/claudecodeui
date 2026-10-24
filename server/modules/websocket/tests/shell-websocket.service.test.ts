@@ -225,3 +225,37 @@ test('a missing project directory is reported as an error frame and starts no pt
     [{ type: 'error', message: 'Invalid project path' }]
   );
 });
+
+test('the container image starts Codex without its npm update offer', () => {
+  const spawnedCommands: string[] = [];
+  const dependencies = {
+    resolveProviderSessionId: () => 'codex-thread-id',
+    spawnPty: (_shell: string, args: string | string[]) => {
+      spawnedCommands.push(Array.isArray(args) ? args[args.length - 1] : args);
+      return createFakePty() as never;
+    },
+  };
+  const previous = process.env.CLOUDCLI_CONTAINER_DEPLOYMENT;
+  process.env.CLOUDCLI_CONTAINER_DEPLOYMENT = 'true';
+  try {
+    const socket = createFakeSocket();
+    handleShellConnection(socket as never, dependencies);
+    socket.emit('message', JSON.stringify({
+      type: 'init',
+      projectPath: process.cwd(),
+      sessionId: `codex-update-${Date.now()}`,
+      hasSession: true,
+      provider: 'codex',
+    }));
+  } finally {
+    if (previous === undefined) delete process.env.CLOUDCLI_CONTAINER_DEPLOYMENT; else process.env.CLOUDCLI_CONTAINER_DEPLOYMENT = previous;
+  }
+
+  assert.equal(spawnedCommands.length, 1);
+  if (os.platform() !== 'win32') {
+    assert.equal(
+      spawnedCommands[0],
+      'codex -c check_for_update_on_startup=false resume "codex-thread-id" || codex -c check_for_update_on_startup=false',
+    );
+  }
+});

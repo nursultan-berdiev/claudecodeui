@@ -20,7 +20,7 @@ async function withIsolatedDatabase(runTest: (userId: number) => void | Promise<
   await initializeDatabase();
 
   try {
-    const user = userDb.createUser('scheduler', 'hash');
+    const user = userDb.createUser('scheduler', 'hash', 'admin');
     sessionsDb.createAppSession(SESSION_ID, 'claude', tempDirectory, 'Scheduled session');
     await runTest(Number(user.id));
   } finally {
@@ -306,5 +306,33 @@ test('scheduling validates its input', async () => {
       () => scheduledMessagesService.schedule({ ...base, sessionId: 'nope', content: 'hi' }),
       (error: Error & { code?: string }) => error.code === 'SESSION_NOT_FOUND',
     );
+  });
+});
+
+test('a temporary password holds the owner\'s queued and scheduled messages', async () => {
+  await withIsolatedDatabase(async (userId) => {
+    userDb.setPasswordHash(userId, 'temporary-hash', true);
+    sessionDraftsDb.saveDraft(userId, SESSION_ID, {
+      text: '',
+      queuedMessage: { content: 'queued before the reset' },
+    });
+    scheduledMessagesService.schedule({
+      userId,
+      sessionId: SESSION_ID,
+      content: 'scheduled before the reset',
+      scheduledFor: new Date(Date.now() - 1_000).toISOString(),
+    });
+
+    const runs: RunCall[] = [];
+    assert.equal(await dispatchQueuedMessages(createRuntime(runs)), 0);
+    await dispatchDueScheduledMessages(createRuntime(runs));
+    assert.equal(runs.length, 0);
+    const row = scheduledMessagesDb.listForSession(userId, SESSION_ID)[0];
+    assert.equal(row.status, 'failed');
+    assert.match(row.failure_reason ?? '', /temporary password/);
+
+    userDb.setPasswordHash(userId, 'chosen-hash', false);
+    assert.equal(await dispatchQueuedMessages(createRuntime(runs)), 1);
+    assert.equal(runs[0]?.command, 'queued before the reset');
   });
 });

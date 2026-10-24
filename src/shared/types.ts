@@ -1,5 +1,4 @@
 import type { TFunction } from 'i18next';
-import type { CSSProperties } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 
 //----------------- LLM PROVIDER MODEL CATALOG ------------
@@ -52,6 +51,25 @@ export type ProviderModelActions = {
 
 /** Identifies the workspace pane the user is looking at; plugin panes are namespaced by plugin id. */
 export type AppTab = 'chat' | 'files' | 'shell' | 'git' | 'tasks' | 'browser' | `plugin:${string}`;
+
+//----------------- UI PREFERENCES ------------
+
+/** Personal display and input preferences persisted by the shared preference store. */
+export type UiPreferences = {
+  showRawParameters: boolean;
+  /** Whether model reasoning shows in the transcript. Stored under a new name so the hidden-by-default switch reaches users whose old `showThinking: true` is saved. */
+  showReasoning: boolean;
+  sendByCtrlEnter: boolean;
+  sidebarVisible: boolean;
+  voiceEnabled: boolean;
+  showTerminalTab: boolean;
+  showFilesTab: boolean;
+};
+
+/** A supported boolean setting accepted by the UI preference context. */
+export type UiPreferenceKey = keyof UiPreferences;
+
+// ---------------------------
 
 /** A message queued to be sent to a session at a future time. */
 export type ScheduledMessage = {
@@ -271,7 +289,7 @@ export type QueueItemStatus = 'completed' | 'in_progress' | 'pending';
 
 //----------------- CHAT MESSAGES AND PERMISSIONS ------------
 
-/** Permission preset a provider runs a turn under ('default', 'acceptEdits', 'auto', 'bypassPermissions' or 'plan'), chosen in the composer and sent with each message; the backend capability matrix decides which values a given provider accepts. */
+/** Plan and Auto composer presets, plus legacy values accepted when restoring older settings and queued messages. */
 export type PermissionMode = 'default' | 'acceptEdits' | 'auto' | 'bypassPermissions' | 'plan';
 
 /** A non-image file attached to a chat message, described by its path in the server-managed attachment store plus display metadata so it can be listed and downloaded. */
@@ -819,17 +837,25 @@ export type QueuedSendOptions = Record<string, unknown>;
 /** Function that turns an old/new string pair into rendered diff lines; the chat session state supplies one memoized, caching instance so each file diff is computed only once. */
 export type DiffCalculator = (oldStr: string, newStr: string) => DiffLine[];
 
-/** A synthetic transcript entry standing for a run of consecutive calls to the same tool, produced by the message grouping pass and identified by its `_isGroup` flag so the message list can collapse the run into one expandable block. */
+/** One request to bring a transcript row into view. A fresh object per request, so asking for the same row twice still counts as a new reveal. */
+export type TranscriptRevealRequest = { message: ChatMessage };
+
+/** A synthetic transcript entry standing for a run of consecutive tool calls (any mix of tools), produced by the message grouping pass and identified by its `_isGroup` flag so the message list can collapse the run into one expandable summary line. */
 export type ToolGroupItem = {
   _isGroup: true;
-  toolName: string;
   messages: ChatMessage[];
   timestamp: ChatMessage['timestamp'];
   /**
-   * Summary line for the collapsed group, built while grouping so the tool-input
-   * JSON parsing it needs never runs during render.
+   * Inputs of the first few calls for the collapsed summary line, extracted while
+   * grouping so the tool-input JSON parsing it needs never runs during render.
    */
-  preview: string;
+  previewNames: string[];
+  /** Calls in the group that `previewNames` does not name. */
+  previewExtraCount: number;
+  /** Calls still waiting for their result. */
+  runningCount: number;
+  /** Calls that ended in an error or were denied. */
+  failedCount: number;
 };
 
 /** One line of a rendered file diff, marked 'added' or 'removed', with its text and line number. */
@@ -1322,26 +1348,6 @@ export type ProviderAuthStatusMap = Record<LLMProvider, ProviderAuthStatus>;
 
 // ---------------------------
 
-//----------------- QUICK SETTINGS PANEL ------------
-
-/** Identifier of a boolean user preference exposed in the quick settings panel; use it as the key when reading or writing one preference. */
-export type PreferenceToggleKey =
-  | 'showRawParameters'
-  | 'showThinking'
-  | 'sendByCtrlEnter'
-  | 'voiceEnabled';
-
-/** The full set of quick settings booleans keyed by PreferenceToggleKey, held together so the panel can read every toggle from one object. */
-export type QuickSettingsPreferences = Record<PreferenceToggleKey, boolean>;
-
-/** Which content area the quick settings panel is showing: 'settings' (preference toggles) or 'commands' (slash-command list); persisted with the pin state and used by the tab bar and the panel view. */
-export type QuickSettingsTab = 'settings' | 'commands';
-
-/** Inline style for the quick settings drag handle, produced by the drag hook from the stored handle position and applied by the handle component. */
-export type QuickSettingsHandleStyle = CSSProperties;
-
-// ---------------------------
-
 //----------------- SETTINGS ------------
 
 /** The per-provider agent context the agents settings tab builds once and hands to each of its sections. */
@@ -1354,7 +1360,22 @@ export type AgentContext = {
 };
 
 /** Identifier of a top-level section in the settings dialog; use it whenever a tab is stored, compared or requested so deep links, the sidebar and the command palette all agree on the same set of names. */
-export type SettingsMainTab = 'agents' | 'appearance' | 'git' | 'api' | 'voice' | 'tasks' | 'browser' | 'notifications' | 'plugins' | 'about';
+export type SettingsMainTab = 'agents' | 'appearance' | 'account' | 'git' | 'api' | 'voice' | 'tasks' | 'browser' | 'notifications' | 'plugins' | 'users' | 'departments' | 'about';
+
+//----------------- COMPANY SHARING ------------
+/** User-controlled visibility for a chat or skill. */
+export type ResourceVisibility = 'private' | 'departments' | 'company';
+/** A department visible to sharing controls; membership lists are returned only to administrators. */
+export type CompanyDepartment = { id: number; name: string; description: string; memberIds: number[] };
+/** Server-authoritative sharing state and permission to change it. */
+export type ResourceSharing = { ownerUserId: number | null; visibility: ResourceVisibility; departmentIds: number[]; canManage: boolean };
+/** Skill markdown and supporting files edited by the managed library. */
+export type CompanySkill = ResourceSharing & {
+  ownerName?: string;
+  id: string; name: string; description: string; provider: string; content: string;
+  files: Array<{ relativePath: string; content: string; encoding?: 'utf8' | 'base64' }>;
+  createdAt: string; updatedAt: string;
+};
 
 /** The coding-agent CLI a settings screen is configuring, aliasing LLMProvider so agent-scoped settings read as being about an agent rather than a chat model. */
 export type AgentProvider = LLMProvider;
@@ -1363,7 +1384,7 @@ export type AgentProvider = LLMProvider;
 export type AgentCategory = 'account' | 'permissions' | 'mcp' | 'skills';
 
 /** How much Codex may do without asking, from prompting on every edit to bypassing permission checks entirely; persisted as the Codex agent's permission setting. */
-export type CodexPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions';
+export type CodexPermissionMode = 'plan' | 'auto';
 
 /** A project as the settings dialog needs it - a required identifier in `name` plus optional display name and paths - passed down to the MCP and skills panels so they can scope configuration to a project. */
 export type AgentSettingsProject = {

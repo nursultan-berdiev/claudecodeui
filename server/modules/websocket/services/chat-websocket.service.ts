@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import type { WebSocket } from 'ws';
 
-import { sessionsDb } from '@/modules/database/index.js';
+import { resourceAccessDb, sessionsDb } from '@/modules/database/index.js';
 import { providerModelsService, sessionsService } from '@/modules/providers/index.js';
 import { chatRunRegistry } from '@/modules/websocket/services/chat-run-registry.service.js';
 import { connectedClients, WS_OPEN_STATE } from '@/modules/websocket/services/websocket-state.service.js';
@@ -19,7 +19,7 @@ import type {
   ProviderPermissionDecision,
   ProviderRuntimeWriter,
 } from '@/shared/types.js';
-import { parseIncomingJsonObject } from '@/shared/utils.js';
+import { bindConnectionActor, getAccessActor, parseIncomingJsonObject, withAccessActor } from '@/shared/utils.js';
 
 /**
  * Trust boundary for client-supplied image attachments: chat.send options come
@@ -271,6 +271,8 @@ async function dispatchRun(
   // app session id.
   const runtimeOptions: AnyRecord = {
     ...clientOptions,
+    resumeAnchorId: undefined,
+    resumeFromScratch: undefined,
     ...extraRuntimeOptions,
     // Attachments are re-validated server-side: only direct children of the
     // global upload store may reach provider runtimes or their file tools.
@@ -278,12 +280,13 @@ async function dispatchRun(
     images: uniqueAttachments.filter(isImageAttachmentDescriptor),
     files: uniqueAttachments.filter((descriptor) => !isImageAttachmentDescriptor(descriptor)),
     sessionId,
-    cwd: clientOptions.cwd ?? session.project_path ?? undefined,
-    projectPath: session.project_path ?? clientOptions.projectPath,
+    cwd: session.project_path ?? undefined,
+    projectPath: session.project_path,
   };
 
   let failure: string | null = null;
   try {
+    for (const attachment of uniqueAttachments) resourceAccessDb.bindAsset(sessionId, path.basename(attachment.path));
     // Runs only now that the session is reserved, because an edit rewinds the
     // conversation here and a rewind for a run that was never admitted cannot
     // be taken back. Inside the try so a rewind that throws still releases the
@@ -512,6 +515,10 @@ function handleChatSubscribe(
     if (!sessionId) {
       continue;
     }
+    if (getAccessActor() && !sessionsDb.getSessionById(sessionId)) {
+      sendProtocolError(ws, 'SESSION_NOT_FOUND', 'Chat not found', sessionId);
+      continue;
+    }
 
     const lastSeqRaw = (target as AnyRecord).lastSeq;
     const lastSeq = typeof lastSeqRaw === 'number' && Number.isFinite(lastSeqRaw)
@@ -564,6 +571,11 @@ function handleChatSubscribe(
 function handlePermissionResponse(data: AnyRecord, dependencies: ChatWebSocketDependencies): void {
   if (typeof data.requestId !== 'string' || data.requestId.length === 0) {
     return;
+  }
+  if (getAccessActor()) {
+    const allowed = sessionsDb.getAllSessions().some((session) => dependencies.runtime.getPendingApprovalsForSession(session.session_id)
+      .some((pending) => pending && typeof pending === 'object' && (pending as AnyRecord).requestId === data.requestId));
+    if (!allowed) return;
   }
 
   dependencies.runtime.resolveToolApproval(data.requestId, {
@@ -663,8 +675,10 @@ export function handleChatConnection(
   connectedClients.add(ws);
 
   const userId = readRequestUserId(request);
+  const actor = userId === null ? null : { id: Number(userId), role: request.user?.role === 'admin' ? 'admin' as const : 'member' as const };
+  if (actor) bindConnectionActor(ws, actor);
 
-  ws.on('message', async (rawMessage) => {
+  ws.on('message', (rawMessage) => withAccessActor(actor, async () => {
     try {
       const parsed = parseIncomingJsonObject(rawMessage);
       if (!parsed) {
@@ -673,6 +687,12 @@ export function handleChatConnection(
 
       const data = parsed as AnyRecord;
       const messageType = typeof data.type === 'string' ? data.type : '';
+      if (actor && ['chat.send', 'chat.edit-send', 'chat.abort', 'chat.stop-task'].includes(messageType)
+        && typeof data.sessionId === 'string' && !sessionsDb.getSessionById(data.sessionId)) {
+        sendProtocolError(ws, 'SESSION_NOT_FOUND', 'Chat not found', data.sessionId);
+        return;
+      }
+      if (actor && messageType === 'chat.edit-send' && typeof data.sessionId === 'string') resourceAccessDb.assertManageSession(data.sessionId);
 
       switch (messageType) {
         case 'chat.edit-send':
@@ -702,7 +722,7 @@ export function handleChatConnection(
       console.error('[ERROR] Chat WebSocket error:', message);
       sendProtocolError(ws, 'INTERNAL_ERROR', message);
     }
-  });
+  }));
 
   ws.on('close', () => {
     console.log('[INFO] Chat client disconnected');

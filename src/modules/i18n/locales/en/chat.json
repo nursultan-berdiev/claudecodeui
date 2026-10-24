@@ -72,7 +72,17 @@
     "addTo": "Adds {{entry}} to Allowed Tools.",
     "retry": "Permission saved. Retry the request to use the tool.",
     "error": "Unable to update permissions. Please try again.",
-    "openSettings": "Open settings"
+    "openSettings": "Open settings",
+    "request": {
+      "title": "Permission required",
+      "tool": "Tool:",
+      "rule": "Allow rule:",
+      "viewInput": "View tool input",
+      "deny": "Deny",
+      "allowRemember": "Allow & remember",
+      "allowSaved": "Allow (saved)",
+      "allowOnce": "Allow once"
+    }
   },
   "todo": {
     "updated": "Todo list has been updated successfully",
@@ -80,7 +90,11 @@
   },
   "plan": {
     "viewPlan": "📋 View implementation plan",
-    "title": "Implementation Plan"
+    "title": "Implementation Plan",
+    "toggle": "Toggle plan",
+    "generating": "Generating plan...",
+    "revise": "Revise",
+    "build": "Build"
   },
   "usageLimit": {
     "resetAt": "Claude usage limit reached. Your limit will reset at **{{time}} {{timezone}}** - {{date}}"
@@ -89,17 +103,17 @@
     "permissionMode": "Permission Mode",
     "modes": {
       "default": "Default Mode",
-      "auto": "Auto Mode",
+      "auto": "Auto",
       "acceptEdits": "Accept Edits",
       "bypassPermissions": "Bypass Permissions",
-      "plan": "Plan Mode"
+      "plan": "Plan"
     },
     "descriptions": {
       "default": "Only trusted commands (ls, cat, grep, git status, etc.) run automatically. Other commands are skipped. Can write to workspace.",
-      "auto": "A model classifier decides per tool call whether to approve or deny. Hands-off, but safer than Bypass — denials still happen.",
+      "auto": "Reads, commands and file writes run without manual approval. Questions that need your answer remain interactive.",
       "acceptEdits": "All commands run automatically within the workspace. Full auto mode with sandboxed execution.",
       "bypassPermissions": "Full system access with no restrictions. All commands run automatically with full disk and network access. Use with caution.",
-      "plan": "Planning mode - no commands are executed"
+      "plan": "Analyze and prepare a plan. Changes are not executed automatically."
     },
     "technicalDetails": "Technical details"
   },
@@ -112,7 +126,7 @@
     "loading": "Loading…"
   },
   "input": {
-    "placeholder": "Type / for commands, @ for files, or ask {{provider}} anything...",
+    "placeholder": "Ask anything",
     "placeholderDefault": "Type your message...",
     "disabled": "Input disabled",
     "attachFiles": "Attach files",
@@ -136,7 +150,8 @@
       "willSend": "Will send when this finishes",
       "edit": "Edit queued message",
       "delete": "Delete queued message"
-    }
+    },
+    "dropFilesHere": "Drop files here"
   },
   "composer": {
     "reasoning": "Reasoning",
@@ -144,7 +159,7 @@
     "effortDefault": "Default",
     "loadingModels": "Loading models…",
     "modelMenu": "Select model and reasoning effort",
-    "permissionHeading": "How should {{provider}} actions be approved?",
+    "permissionHeading": "{{provider}} mode",
     "editing": {
       "title": "Replacing an earlier message",
       "filesNotReverted": "files the agent already changed are not reverted",
@@ -176,7 +191,8 @@
     "manageModels": "Manage models",
     "noModelsFound": "No models found.",
     "loadingModels": "Loading models…",
-    "clickToChange": "Click to change model"
+    "clickToChange": "Click to change model",
+    "greeting": "What can I help with?"
   },
   "session": {
     "continue": {
@@ -364,5 +380,12 @@
     "tokensLabel_other": "tokens",
     "escClosesModal": "Esc closes the modal.",
     "close": "Close"
+  },
+  "toolGroup": {
+    "running": "Working…",
+    "done_one": "Ran {{count}} action",
+    "done_other": "Ran {{count}} actions",
+    "failed": "{{count}} failed",
+    "more": "+{{count}} more"
   }
 }

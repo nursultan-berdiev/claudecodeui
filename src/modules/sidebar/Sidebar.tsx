@@ -104,7 +104,6 @@ function Sidebar({
     archivedSessionsCount,
     isArchivedSessionsLoading,
     recentConversations,
-    recentConversationsTotal,
     recentConversationsHasMore,
     isRecentConversationsLoading,
     isLoadingMoreRecentConversations,
@@ -263,6 +262,7 @@ function Sidebar({
       {isSidebarCollapsed ? (
         <SidebarCollapsed
           onExpand={handleExpandSidebar}
+          onNewSession={onNewSession}
           onShowSettings={onShowSettings}
           updateAvailable={updateAvailable}
           restartRequired={restartRequired}
@@ -275,14 +275,12 @@ function Sidebar({
             isPWA={isPWA}
             isMobile={isMobile}
             isLoading={isLoading}
-            projects={projects}
             runningSessionsCount={runningSessionsCount}
             archivedProjects={archivedProjects}
             archivedSessions={archivedSessions}
             archivedSessionsCount={archivedSessionsCount}
             isArchivedSessionsLoading={isArchivedSessionsLoading}
             recentConversations={recentConversations}
-            recentConversationsTotal={recentConversationsTotal}
             recentConversationsHasMore={recentConversationsHasMore}
             isRecentConversationsLoading={isRecentConversationsLoading}
             isLoadingMoreRecentConversations={isLoadingMoreRecentConversations}
@@ -347,7 +345,6 @@ function Sidebar({
             restartRequired={restartRequired}
             releaseInfo={releaseInfo}
             latestVersion={latestVersion}
-            currentVersion={currentVersion}
             onShowVersionModal={() => setShowVersionModal(true)}
             onShowSettings={onShowSettings}
             projectListProps={projectListProps}

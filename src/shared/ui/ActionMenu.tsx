@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Loader2, type LucideIcon } from 'lucide-react';
+import { Check, ChevronDown, Loader2, type LucideIcon } from 'lucide-react';
 
 import { cn } from '@/shared/utils';
 import { Button } from '@/shared/ui/Button';
@@ -13,6 +13,10 @@ export type ActionMenuItem = {
   label: string;
   description?: string;
   icon?: LucideIcon;
+  /** Drawn instead of `icon` for an icon that is not a Lucide component, such as a plugin's. */
+  iconNode?: React.ReactNode;
+  /** Set to make the item a radio choice; true marks the current one. */
+  checked?: boolean;
   onSelect: () => void;
   disabled?: boolean;
   loading?: boolean;
@@ -36,10 +40,15 @@ type ActionMenuProps = {
   iconOnly?: boolean;
   portal?: boolean;
   header?: React.ReactNode;
+  /** Replaces the trigger's icon, label and chevron, e.g. with an avatar and a name. */
+  triggerContent?: React.ReactNode;
   onOpenChange?: (open: boolean) => void;
 };
 
-/** Used by the mcp and sidebar modules for the "…" overflow menu on a server or session row. */
+/**
+ * Used by the mcp and sidebar modules for row "…" menus and the sidebar user menu, by
+ * project-workspace for the header's tools menu, and by chat for the export menu.
+ */
 export function ActionMenu({
   label,
   items,
@@ -55,6 +64,7 @@ export function ActionMenu({
   iconOnly = false,
   portal = false,
   header,
+  triggerContent,
   onOpenChange,
 }: ActionMenuProps) {
   const [isOpen, setIsOpen] = React.useState(false);
@@ -94,18 +104,22 @@ export function ActionMenu({
       }
     };
 
+    // Captured on window and marked handled, so page-level Escape shortcuts
+    // (the chat's abort) see that the menu already consumed it.
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
         restoreFocusRef.current = true;
         setMenuOpen(false);
       }
     };
 
     document.addEventListener('mousedown', closeOnOutsideClick);
-    document.addEventListener('keydown', closeOnEscape);
+    window.addEventListener('keydown', closeOnEscape, { capture: true });
     return () => {
       document.removeEventListener('mousedown', closeOnOutsideClick);
-      document.removeEventListener('keydown', closeOnEscape);
+      window.removeEventListener('keydown', closeOnEscape, { capture: true });
     };
   }, [isOpen, setMenuOpen]);
 
@@ -130,7 +144,7 @@ export function ActionMenu({
       wasOpenRef.current = true;
       if (focusMenuOnOpenRef.current) {
         const menu = menuRef.current;
-        const firstItem = menu?.querySelector<HTMLButtonElement>('[role="menuitem"]:not([disabled])');
+        const firstItem = menu?.querySelector<HTMLButtonElement>('[role^="menuitem"]:not([disabled])');
         (firstItem ?? menu)?.focus();
       }
       return;
@@ -202,7 +216,8 @@ export function ActionMenu({
             {item.showDividerBefore && <div className="mx-2 my-1 h-px bg-border" />}
             <button
               type="button"
-              role="menuitem"
+              role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
+              aria-checked={item.checked}
               disabled={item.disabled || item.loading}
               onClick={() => runItem(item)}
               className={cn(
@@ -217,6 +232,8 @@ export function ActionMenu({
             >
               {item.loading ? (
                 <Loader2 className="mt-0.5 h-4 w-4 flex-shrink-0 animate-spin" />
+              ) : item.iconNode ? (
+                <span className="mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center">{item.iconNode}</span>
               ) : (
                 Icon && <Icon className="mt-0.5 h-4 w-4 flex-shrink-0" />
               )}
@@ -228,6 +245,7 @@ export function ActionMenu({
                   </span>
                 )}
               </span>
+              {item.checked && <Check className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />}
             </button>
           </React.Fragment>
         );
@@ -253,11 +271,15 @@ export function ActionMenu({
           toggleMenu();
         }}
       >
-        {TriggerIcon && <TriggerIcon className="h-4 w-4" />}
-        {!iconOnly && (
+        {triggerContent ?? (
           <>
-            <span>{label}</span>
-            <ChevronDown className={cn('h-4 w-4 transition-transform', isOpen && 'rotate-180')} />
+            {TriggerIcon && <TriggerIcon className="h-4 w-4" />}
+            {!iconOnly && (
+              <>
+                <span>{label}</span>
+                <ChevronDown className={cn('h-4 w-4 transition-transform', isOpen && 'rotate-180')} />
+              </>
+            )}
           </>
         )}
       </Button>

@@ -1,16 +1,19 @@
-import { Folder } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+import type { Project } from '@/shared/types';
 import MobileMenuButton from '@/modules/project-workspace/MobileMenuButton';
+import { NewChatButton } from '@/modules/company';
 
 type WorkspaceStateViewProps = {
   mode: 'loading' | 'empty';
   isMobile: boolean;
   onMenuClick: () => void;
+  /** Starts a chat from the empty workspace; absent while loading. */
+  onNewSession?: (project: Project) => void;
 };
 
 /** Rendered by WorkspaceMain instead of the workspace while projects load or when none is selected. */
-export default function WorkspaceStateView({ mode, isMobile, onMenuClick }: WorkspaceStateViewProps) {
+export default function WorkspaceStateView({ mode, isMobile, onMenuClick, onNewSession }: WorkspaceStateViewProps) {
   const { t } = useTranslation();
 
   const isLoading = mode === 'loading';
@@ -18,7 +21,7 @@ export default function WorkspaceStateView({ mode, isMobile, onMenuClick }: Work
   return (
     <div className="flex h-full flex-col">
       {isMobile && (
-        <div className="pwa-header-safe flex-shrink-0 border-b border-border/50 bg-background/80 p-2 backdrop-blur-sm sm:p-3">
+        <div className="pwa-header-safe flex-shrink-0 bg-background p-2 sm:p-3">
           <MobileMenuButton onMenuClick={onMenuClick} compact />
         </div>
       )}
@@ -42,17 +45,18 @@ export default function WorkspaceStateView({ mode, isMobile, onMenuClick }: Work
         </div>
       ) : (
         <div className="flex flex-1 items-center justify-center">
-          <div className="mx-auto max-w-md px-6 text-center">
-            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-muted/50">
-              <Folder className="h-7 w-7 text-muted-foreground" />
-            </div>
-            <h2 className="mb-2 text-xl font-semibold text-foreground">{t('mainContent.chooseProject')}</h2>
-            <p className="mb-5 text-sm leading-relaxed text-muted-foreground">{t('mainContent.selectProjectDescription')}</p>
-            <div className="rounded-xl border border-primary/10 bg-primary/5 p-3.5">
-              <p className="text-sm text-primary">
-                <strong>{t('mainContent.tip')}:</strong> {isMobile ? t('mainContent.createProjectMobile') : t('mainContent.createProjectDesktop')}
-              </p>
-            </div>
+          <div className="mx-auto max-w-md px-6 pb-12 text-center">
+            <h2 className="text-2xl font-semibold tracking-tight text-foreground sm:text-[28px]">
+              {t('mainContent.greeting', { defaultValue: 'What can I help with?' })}
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {t('mainContent.startChatHint', { defaultValue: 'Start a new chat or pick one on the left.' })}
+            </p>
+            {onNewSession && (
+              <div className="mx-auto mt-5 w-fit rounded-full border border-border px-2">
+                <NewChatButton onOpenChat={onNewSession} />
+              </div>
+            )}
           </div>
         </div>
       )}

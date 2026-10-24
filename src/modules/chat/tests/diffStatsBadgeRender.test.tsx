@@ -90,14 +90,16 @@ describe('diff stats on a collapsed tool group', () => {
     }),
   } as unknown as ChatMessage);
 
-  const renderGroup = (toolName: string, messages: ChatMessage[]) => {
-    const group = {
+  const renderGroup = (messages: ChatMessage[]) => {
+    const group: ToolGroupItem = {
       _isGroup: true,
-      toolName,
       messages,
       timestamp: messages[0].timestamp,
-      preview: 'a.js',
-    } as ToolGroupItem;
+      previewNames: ['a.js'],
+      previewExtraCount: 0,
+      runningCount: 0,
+      failedCount: 0,
+    };
 
     return renderToStaticMarkup(
       React.createElement(ToolGroupContainer, {
@@ -111,7 +113,7 @@ describe('diff stats on a collapsed tool group', () => {
   };
 
   it('totals the added and removed lines across the group', () => {
-    const markup = renderGroup('Edit', [
+    const markup = renderGroup([
       editMessage('a\nb', 'a\nB'),
       editMessage('one\ntwo\nthree', 'one\ntwo\nthree\nfour\nfive'),
     ]);
@@ -119,16 +121,22 @@ describe('diff stats on a collapsed tool group', () => {
     expect(markup).toContain('3 lines added, 1 removed');
   });
 
-  it('leaves a group of non-diff tools without a total', () => {
-    const readMessage = {
-      type: 'assistant',
-      content: '',
-      timestamp: new Date('2026-08-23T00:00:00.000Z'),
-      isToolUse: true,
-      toolName: 'Read',
-      toolInput: serializeToolInput({ file_path: '/tmp/demo/a.js' }),
-    } as unknown as ChatMessage;
+  const readMessage = {
+    type: 'assistant',
+    content: '',
+    timestamp: new Date('2026-08-23T00:00:00.000Z'),
+    isToolUse: true,
+    toolName: 'Read',
+    toolInput: serializeToolInput({ file_path: '/tmp/demo/a.js' }),
+  } as unknown as ChatMessage;
 
-    expect(renderGroup('Read', [readMessage, readMessage])).not.toContain('lines added');
+  it('leaves a group of non-diff tools without a total', () => {
+    expect(renderGroup([readMessage, readMessage])).not.toContain('lines added');
+  });
+
+  it('totals only the edits in a group that mixes tools', () => {
+    const markup = renderGroup([readMessage, editMessage('a\nb', 'a\nB'), readMessage]);
+
+    expect(markup).toContain('1 lines added, 1 removed');
   });
 });

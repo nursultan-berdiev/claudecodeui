@@ -2,6 +2,8 @@ import { providerRegistry } from '@/modules/providers/provider.registry.js';
 import { providerModelsService } from '@/modules/providers/services/provider-models.service.js';
 import { sessionsService } from '@/modules/providers/services/sessions.service.js';
 import type { IProvider } from '@/shared/interfaces.js';
+import { companySkillsService } from '@/modules/company/index.js';
+import { AppError, getAccessActor, validateWorkspacePath, withoutGeneratedSkillContext } from '@/shared/utils.js';
 import type {
   AnyRecord,
   LLMProvider,
@@ -51,7 +53,7 @@ export function createProviderRuntimeService(
     resolveResumeModel: (sessionId, requestedModel) =>
       dependencies.resolveResumeModel(provider.id, sessionId, requestedModel),
     getProviderModels: async () => dependencies.getProviderModels(provider.id),
-    normalizeMessage: (raw, sessionId) => provider.sessions.normalizeMessage(raw, sessionId),
+    normalizeMessage: (raw, sessionId) => provider.sessions.normalizeMessage(raw, sessionId).map(withoutGeneratedSkillContext),
     async isProviderInstalled() {
       try {
         return (await provider.auth.getStatus()).installed;
@@ -62,14 +64,28 @@ export function createProviderRuntimeService(
     },
   });
 
-  const run = (
+  const run = async (
     providerName: LLMProvider,
     command: string,
     options: AnyRecord,
     writer: ProviderRuntimeWriter,
   ): Promise<unknown> => {
     const provider = dependencies.resolveProvider(providerName);
-    return provider.runtime.run(command, options, writer, createRuntimeContext(provider));
+    if (getAccessActor()) {
+      const workspace = await validateWorkspacePath(String(options.cwd ?? options.projectPath ?? ''));
+      if (!workspace.valid) throw new AppError('Chat workspace is unavailable', { code: 'INVALID_WORKSPACE_PATH', statusCode: 403 });
+      await companySkillsService.importDiscovered(providerName, await provider.skills.listSkills({ workspacePath: typeof options.cwd === 'string' ? options.cwd : undefined }));
+      command = await companySkillsService.preparePrompt(providerName, command, String(options.sessionId ?? 'new'));
+    }
+    // Our Auto preset is unattended execution; Claude's native auto can fall back to manual approval.
+    const runtimeOptions = options.permissionMode === 'auto'
+      ? {
+        ...options,
+        permissionMode: 'bypassPermissions',
+        ...(providerName === 'cursor' ? { skipPermissions: true } : {}),
+      }
+      : options;
+    return provider.runtime.run(command, runtimeOptions, writer, createRuntimeContext(provider));
   };
 
   return {

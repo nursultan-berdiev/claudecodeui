@@ -10,7 +10,7 @@ import type {
   RefObject,
   TouchEvent,
 } from 'react';
-import { PaperclipIcon, MessageSquareIcon, XIcon, Loader2, ArrowUpIcon, PencilIcon } from 'lucide-react';
+import { PlusIcon, Loader2, ArrowUpIcon, PencilIcon } from 'lucide-react';
 
 import { useVoiceInput } from '@/modules/chat/hooks/useVoiceInput';
 import { useVoiceAvailable } from '@/modules/chat/hooks/useVoiceAvailable';
@@ -30,7 +30,6 @@ import ActivityIndicator from '@/modules/chat/composer/ActivityIndicator';
 import ComposerAttachment from '@/modules/chat/composer/ComposerAttachment';
 import VoiceInputButton from '@/modules/chat/composer/VoiceInputButton';
 import PermissionRequestsBanner from '@/modules/chat/composer/PermissionRequestsBanner';
-import TokenUsageSummary from '@/modules/chat/composer/TokenUsageSummary';
 import QueuedMessageCard from '@/modules/chat/composer/QueuedMessageCard';
 import { ScheduleMessagePopover } from '@/modules/chat/composer/ScheduleMessagePopover';
 import { ScheduledMessageList } from '@/modules/chat/composer/ScheduledMessageList';
@@ -63,12 +62,6 @@ type ChatComposerProps = {
   availableModelOptions: ProviderModelOption[];
   onSelectModel: (model: string) => void;
   modelsLoading: boolean;
-  tokenBudget: Record<string, unknown> | null;
-  onShowTokenUsage: () => void;
-  slashCommandsCount: number;
-  onToggleCommandMenu: () => void;
-  hasInput: boolean;
-  onClearInput: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement> | MouseEvent<HTMLButtonElement> | TouchEvent<HTMLButtonElement>) => void;
   isDragActive: boolean;
   queuedDraft: QueuedDraft | null;
@@ -108,11 +101,8 @@ type ChatComposerProps = {
   onTextareaPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   onTextareaScrollSync: (target: HTMLTextAreaElement) => void;
   onTextareaInput: (event: FormEvent<HTMLTextAreaElement>) => void;
-  isInputFocused?: boolean;
-  onInputFocusChange?: (focused: boolean) => void;
   placeholder: string;
   isTextareaExpanded: boolean;
-  sendByCtrlEnter?: boolean;
 };
 
 /**
@@ -138,12 +128,6 @@ export default function ChatComposer({
   availableModelOptions,
   onSelectModel,
   modelsLoading,
-  tokenBudget,
-  onShowTokenUsage,
-  slashCommandsCount,
-  onToggleCommandMenu,
-  hasInput,
-  onClearInput,
   onSubmit,
   isDragActive,
   queuedDraft,
@@ -181,11 +165,8 @@ export default function ChatComposer({
   onTextareaPaste,
   onTextareaScrollSync,
   onTextareaInput,
-  isInputFocused = false,
-  onInputFocusChange,
   placeholder,
   isTextareaExpanded,
-  sendByCtrlEnter,
 }: ChatComposerProps) {
   const { t } = useTranslation('chat');
   const fileDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -249,17 +230,9 @@ export default function ChatComposer({
 
   // Hide the thinking/status bar while any permission request is pending
   const hasPendingPermissions = pendingPermissionRequests.length > 0;
-  const hasActivityIndicator = Boolean(activity && !hasPendingPermissions);
 
   const hasQueuedDraft = Boolean(queuedDraft);
   const canQueueDraft = isLoading && Boolean(input.trim() || attachedFiles.length > 0);
-  const submitHint = canQueueDraft
-    ? hasQueuedDraft
-      ? t('input.hintText.updateQueued', { defaultValue: 'Enter to update queued message' })
-      : t('input.hintText.queue', { defaultValue: 'Enter to queue your next message' })
-    : sendByCtrlEnter
-      ? t('input.hintText.ctrlEnter')
-      : t('input.hintText.enter');
   const submitAriaLabel = canQueueDraft
     ? hasQueuedDraft
       ? t('input.queue.update', { defaultValue: 'Update queued message' })
@@ -269,15 +242,15 @@ export default function ChatComposer({
       : t('input.send');
 
   return (
-    <div className="chat-composer-shell relative flex-shrink-0 px-2 pb-2 pt-0 sm:px-4 sm:pb-4 md:px-4 md:pb-6">
+    <div className="chat-composer-shell relative flex-shrink-0 px-2 pb-2 pt-0 sm:px-4 sm:pb-4 md:px-4 md:pb-5">
       {!hasPendingPermissions && (
-        <div className="pointer-events-none absolute bottom-full left-1/2 z-10 w-[calc(100%-1rem)] max-w-[54.25rem] -translate-x-1/2 translate-y-px bg-transparent sm:w-[calc(100%-2rem)]">
-          <ActivityIndicator activity={activity} onAbort={onAbortSession} isInputFocused={isInputFocused} />
+        <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 w-[calc(100%-1rem)] max-w-3xl -translate-x-1/2 bg-transparent sm:w-[calc(100%-2rem)]">
+          <ActivityIndicator activity={activity} onAbort={onAbortSession} />
         </div>
       )}
 
       {pendingPermissionRequests.length > 0 && (
-        <div className="mx-auto mb-3 max-w-[54.25rem]">
+        <div className="mx-auto mb-3 max-w-3xl">
           <PermissionRequestsBanner
             pendingPermissionRequests={pendingPermissionRequests}
             handlePermissionDecision={handlePermissionDecision}
@@ -292,7 +265,7 @@ export default function ChatComposer({
       />
 
       {isEditingSentMessage && (
-        <div className="mx-auto mb-2 flex max-w-[54.25rem] items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-foreground">
+        <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-foreground">
           <PencilIcon className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
           <span className="min-w-0 flex-1">
             {t('composer.editing.title')}
@@ -320,7 +293,7 @@ export default function ChatComposer({
         />
       )}
 
-      {!hasQuestionPanel && <div className="relative mx-auto max-w-[54.25rem]">
+      {!hasQuestionPanel && <div className="relative mx-auto max-w-3xl">
         {showFileDropdown && filteredFiles.length > 0 && (
           <div
             ref={fileDropdownRef}
@@ -365,16 +338,13 @@ export default function ChatComposer({
         <PromptInput
           onSubmit={onSubmit as (event: FormEvent<HTMLFormElement>) => void}
           status={isLoading ? 'streaming' : 'ready'}
-          className={[
-            isTextareaExpanded ? 'chat-input-expanded' : '',
-            hasActivityIndicator ? 'rounded-t-none' : '',
-          ].filter(Boolean).join(' ')}
+          className={isTextareaExpanded ? 'chat-input-expanded' : undefined}
           {...getRootProps()}
         >
           {isDragActive && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/50 bg-primary/15">
-              <div className="rounded-xl border border-border/30 bg-card p-4 shadow-lg">
-                <svg className="mx-auto mb-2 h-8 w-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="absolute inset-0 z-50 flex items-center justify-center rounded-[28px] border-2 border-dashed border-border bg-muted/80">
+              <div className="rounded-2xl bg-card p-4 shadow-lg">
+                <svg className="mx-auto mb-2 h-8 w-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -382,14 +352,14 @@ export default function ChatComposer({
                     d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                   />
                 </svg>
-                <p className="text-sm font-medium">Drop files here</p>
+                <p className="text-sm font-medium">{t('input.dropFilesHere', { defaultValue: 'Drop files here' })}</p>
               </div>
             </div>
           )}
 
           {attachedFiles.length > 0 && (
             <PromptInputHeader>
-              <div className="rounded-xl bg-muted/40 p-2">
+              <div className="rounded-2xl bg-muted/40 p-2">
                 <div className="flex flex-wrap gap-2">
                   {attachedFiles.map((file, index) => (
                     <ComposerAttachment
@@ -407,8 +377,9 @@ export default function ChatComposer({
           <input {...getInputProps()} />
 
           <PromptInputBody>
-            <div ref={inputHighlightRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl">
-              <div className="chat-input-placeholder block w-full whitespace-pre-wrap break-words px-4 py-2 text-sm leading-6 text-transparent">
+            <div ref={inputHighlightRef} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+              {/* Padding, size and leading must match PromptInputTextarea, or the highlights drift off the words. */}
+              <div className="chat-input-placeholder block w-full whitespace-pre-wrap break-words px-4 pb-1 pt-3 text-base leading-6 text-transparent">
                 {renderInputWithMentions(input)}
               </div>
             </div>
@@ -422,61 +393,34 @@ export default function ChatComposer({
               onKeyDown={onTextareaKeyDown}
               onPaste={onTextareaPaste}
               onScroll={(event) => onTextareaScrollSync(event.target as HTMLTextAreaElement)}
-              onFocus={() => onInputFocusChange?.(true)}
-              onBlur={() => onInputFocusChange?.(false)}
               onInput={onTextareaInput}
               placeholder={placeholder}
             />
         </PromptInputBody>
 
-        <PromptInputFooter className="flex-wrap gap-y-1">
+        <PromptInputFooter className="gap-2">
           <PromptInputTools className="min-w-0">
             <PromptInputButton
               tooltip={{ content: t('input.attachFiles') }}
               onClick={openAttachmentPicker}
               aria-label={t('input.attachFiles')}
             >
-              <PaperclipIcon />
+              <PlusIcon />
             </PromptInputButton>
 
             {onVoiceTranscript && voiceAvailable && (
               <VoiceInputButton state={voiceState} onToggle={voiceToggle} errorMsg={voiceError} />
             )}
 
-            <TokenUsageSummary usage={tokenBudget} onClick={onShowTokenUsage} />
-
-            <PromptInputButton
-              tooltip={{ content: t('input.showAllCommands') }}
-              onClick={onToggleCommandMenu}
-              className="relative"
-            >
-              <MessageSquareIcon />
-              {slashCommandsCount > 0 && (
-                <span
-                  className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground"
-                >
-                  {slashCommandsCount}
-                </span>
-              )}
-            </PromptInputButton>
-
-            {hasInput && (
-              <PromptInputButton
-                tooltip={{ content: t('input.clearInput', { defaultValue: 'Clear input' }) }}
-                onClick={onClearInput}
-                className="hidden sm:flex"
-              >
-                <XIcon />
-              </PromptInputButton>
-            )}
-
           </PromptInputTools>
 
-          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <ScheduleMessagePopover
-              disabled={!input.trim()}
-              onSchedule={onScheduleMessage}
-            />
+          <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1 sm:gap-1.5">
+            {input.trim() && (
+              <ScheduleMessagePopover
+                disabled={false}
+                onSchedule={onScheduleMessage}
+              />
+            )}
 
             <ComposerModelMenu
               effort={effort}
@@ -522,7 +466,7 @@ export default function ChatComposer({
               }
               aria-label={submitAriaLabel}
               title={submitAriaLabel}
-              className="h-10 w-10 sm:h-10 sm:w-10"
+              className="h-9 w-9"
             >
               {isTranscribing ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -532,13 +476,6 @@ export default function ChatComposer({
             </PromptInputSubmit>
           </div>
 
-          <div
-            className={`order-last hidden basis-full px-2 text-center text-xs leading-4 text-muted-foreground/50 transition-opacity duration-200 lg:block ${
-              input.trim() && !canQueueDraft ? 'opacity-0' : 'opacity-100'
-            }`}
-          >
-            {submitHint}
-          </div>
         </PromptInputFooter>
       </PromptInput>
       </div>}

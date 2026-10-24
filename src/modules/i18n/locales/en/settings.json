@@ -15,7 +15,9 @@
     "username": "Username",
     "email": "Email",
     "profile": "Profile",
-    "changePassword": "Change Password"
+    "changePassword": "Change Password",
+    "passwordTitle": "Password",
+    "passwordDescription": "Change the password you use to sign in."
   },
   "mcp": {
     "title": "MCP Servers",
@@ -133,7 +135,80 @@
     "browser": "Browser",
     "notifications": "Notifications",
     "plugins": "Plugins",
-    "about": "About"
+    "users": "Users",
+    "departments": "Departments",
+    "about": "About",
+    "account": "Account"
+  },
+  "company": {
+    "access": "Access",
+    "private": "Private",
+    "departments": "Selected departments",
+    "everyone": "Entire company",
+    "selectDepartments": "Departments with access",
+    "noDepartments": "No departments available",
+    "shareChat": "Share chat",
+    "chatShareDescription": "People with access can read this chat and continue the conversation.",
+    "cancel": "Cancel",
+    "save": "Save",
+    "newChat": "New chat",
+    "newChatDescription": "A new chat is private. You can share it with your departments or the company later.",
+    "provider": "Agent",
+    "project": "Project",
+    "defaultWorkspace": "Shared chat workspace",
+    "chats": "Chats",
+    "chatWorkspaceMissing": "The chat workspace could not be opened",
+    "noAgentReady": "No agent is signed in. Ask an administrator to sign in to Claude or Codex in Settings → Agents.",
+    "create": "Create",
+    "departmentsTitle": "Company departments",
+    "departmentsDescription": "A user can belong to several departments. Department membership controls shared chat and skill access.",
+    "newDepartment": "New department",
+    "departmentName": "Department name",
+    "description": "Description",
+    "members": "Members",
+    "delete": "Delete",
+    "confirmDeleteDepartment": "Delete this department and its access grants?",
+    "skillsTitle": "Skills library",
+    "backToChats": "Back to chats",
+    "newSkill": "New skill",
+    "importSkill": "Import SKILL.md",
+    "importFolder": "Import folder",
+    "searchSkills": "Search skills",
+    "providerFilter": "Filter by agent",
+    "allProviders": "All agents",
+    "noSkills": "No available skills. Create a personal skill or ask a colleague to share one.",
+    "selectSkill": "Select a skill to view its content, edit it or change sharing.",
+    "readOnly": "Shared with you · read only",
+    "confirmDeleteSkill": "Delete this skill from the library?",
+    "binaryFile": "Binary supporting file. Import a replacement to update it.",
+    "replaceFile": "Replace supporting file",
+    "filePath": "Supporting file path",
+    "addFile": "Add file",
+    "removeFile": "Remove file",
+    "importTooLarge": "A skill can include up to 500 files and 30MB.",
+    "skillFileRequired": "The folder must contain SKILL.md."
+  },
+  "users": {
+    "title": "Users",
+    "description": "Users share project folders and agent accounts. New chats are private until their owner shares them.",
+    "username": "Username",
+    "password": "Password",
+    "newPassword": "New password",
+    "role": "Role",
+    "member": "Member",
+    "admin": "Administrator",
+    "create": "Create user",
+    "disable": "Disable",
+    "enable": "Enable",
+    "resetPassword": "Reset password",
+    "savePassword": "Save password",
+    "cancel": "Cancel",
+    "created": "User created",
+    "updated": "User updated",
+    "passwordUpdated": "Password updated",
+    "auditTitle": "Recent activity",
+    "requireChange": "Require a password change at next sign-in",
+    "mustChange": "Must change password"
   },
   "notifications": {
     "title": "Notifications",
@@ -168,6 +243,17 @@
     }
   },
   "appearanceSettings": {
+    "workspaceTabs": {
+      "title": "Workspace tabs",
+      "terminal": {
+        "label": "Show terminal",
+        "description": "Display the Terminal tab in the workspace"
+      },
+      "files": {
+        "label": "Show files",
+        "description": "Display the Files tab in the workspace"
+      }
+    },
     "darkMode": {
       "label": "Dark Mode",
       "description": "Toggle between light and dark themes"
@@ -207,6 +293,9 @@
         "label": "Font Size",
         "description": "Editor font size in pixels"
       }
+    },
+    "chat": {
+      "title": "Chat"
     }
   },
   "mcpForm": {

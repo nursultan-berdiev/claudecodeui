@@ -53,6 +53,12 @@ export function verifyWebSocketClient(
     return false;
   }
 
+  if ((upgradeUrl.pathname === '/shell' || upgradeUrl.pathname.startsWith('/plugin-ws/'))
+    && user.role !== 'admin') {
+    console.log('[WARN] Administrator access required for websocket path:', upgradeUrl.pathname);
+    return false;
+  }
+
   request.user = user;
   console.log('[OK] WebSocket authenticated for user:', user.username);
   return true;

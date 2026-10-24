@@ -96,6 +96,7 @@ const useWebSocketProviderState = (): WebSocketContextType => {
       websocket.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data) as ServerEvent;
+          if (data.kind === 'company_access_changed') window.dispatchEvent(new Event('company-access-changed'));
           dispatch(data);
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);

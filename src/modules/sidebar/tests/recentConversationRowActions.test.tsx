@@ -61,7 +61,6 @@ const renderList = (
 ) => render(
   <SidebarRecentConversations
     conversations={conversations}
-    total={conversations.length}
     hasMore={false}
     isLoading={false}
     isLoadingMore={false}
@@ -120,7 +119,7 @@ test('a project rename never puts a session row into editing', () => {
   assert.equal(recordedOptionsProps[0].isEditing, false);
 });
 
-test('a running session is marked processing and shows a spinner instead of its age', () => {
+test('a running session is marked processing and shows a spinner', () => {
   const { container } = renderList(
     [conversation('s1'), conversation('s2')],
     makeActions({ activeSessions: new Set(['s1']) }),
@@ -129,7 +128,6 @@ test('a running session is marked processing and shows a spinner instead of its 
   assert.equal(recordedOptionsProps[0].isProcessing, true);
   assert.equal(recordedOptionsProps[1].isProcessing, false);
   assert.equal(container.querySelectorAll('.animate-spin').length, 1);
-  assert.equal(container.querySelectorAll('time').length, 1);
 });
 
 test('a session with only background work running gets the purple dot, not the spinner, and is not processing', () => {
@@ -145,7 +143,6 @@ test('a session with only background work running gets the purple dot, not the s
   const dots = container.querySelectorAll('[role="status"].bg-purple-500');
   assert.equal(dots.length, 1);
   assert.equal(dots[0].getAttribute('aria-label'), 'tooltips.backgroundWorkIndicator');
-  assert.equal(container.querySelectorAll('time').length, 1, 'the other row shows its age');
 });
 
 test('a session needing attention gets the amber dot', () => {
@@ -158,4 +155,30 @@ test('a session needing attention gets the amber dot', () => {
   assert.equal(dots.length, 1);
   const rows = container.querySelectorAll('[data-testid="recent-conversation-row"]');
   assert.equal(rows.length, 2);
+});
+
+test('chats are listed under date headings in the order the server sent them', () => {
+  // NOW is 2026-08-21 10:00 UTC; headings follow calendar days, not 24h windows.
+  const { container } = renderList(
+    [
+      conversation('today', { lastActivity: '2026-08-21T08:00:00.000Z' }),
+      conversation('yesterday', { lastActivity: '2026-08-20T08:00:00.000Z' }),
+      conversation('week', { lastActivity: '2026-08-17T08:00:00.000Z' }),
+      conversation('month', { lastActivity: '2026-08-01T08:00:00.000Z' }),
+      conversation('old', { lastActivity: '2026-05-01T08:00:00.000Z' }),
+      conversation('undated', { lastActivity: null }),
+    ],
+    makeActions(),
+  );
+
+  const headings = [...container.querySelectorAll('h3')].map((heading) => heading.textContent);
+  assert.deepEqual(headings, [
+    'recent.groups.today',
+    'recent.groups.yesterday',
+    'recent.groups.previous7Days',
+    'recent.groups.previous30Days',
+    'recent.groups.older',
+  ]);
+  const titles = [...container.querySelectorAll('[data-testid="recent-conversation-row"]')].map((row) => row.textContent);
+  assert.deepEqual(titles, ['title of today', 'title of yesterday', 'title of week', 'title of month', 'title of old', 'title of undated']);
 });

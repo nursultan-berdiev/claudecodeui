@@ -15,8 +15,7 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ['"Encode Sans"', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif'],
-        serif: ['Merriweather', 'Georgia', 'Cambria', '"Times New Roman"', 'serif'],
+        sans: ['ui-sans-serif', '-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', 'sans-serif'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -24,6 +23,7 @@ export default {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        sidebar: "hsl(var(--sidebar))",
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",

@@ -1,6 +1,7 @@
 import { getConnection } from '@/modules/database/connection.js';
 import { projectsDb } from '@/modules/database/repositories/projects.db.js';
-import { normalizeProjectPath } from '@/shared/utils.js';
+import { resourceAccessDb } from '@/modules/database/repositories/resource-access.db.js';
+import { getAccessActor, normalizeProjectPath } from '@/shared/utils.js';
 
 type SessionRow = {
   session_id: string;
@@ -15,6 +16,8 @@ type SessionRow = {
   effort: string | null;
   /** The app session this one was branched from; NULL unless it is a fork. */
   forked_from_session_id: string | null;
+  owner_user_id: number | null;
+  visibility: string;
   isArchived: number;
   created_at: string;
   updated_at: string;
@@ -26,7 +29,7 @@ type RecentSessionsPage = {
 };
 
 const SESSION_ROW_COLUMNS =
-  'session_id, provider, provider_session_id, project_path, jsonl_path, custom_name, model, effort, forked_from_session_id, isArchived, created_at, updated_at';
+  'session_id, provider, provider_session_id, project_path, jsonl_path, custom_name, model, effort, forked_from_session_id, owner_user_id, visibility, isArchived, created_at, updated_at';
 
 const SQLITE_UTC_TIMESTAMP_REGEX = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
 
@@ -61,12 +64,14 @@ function normalizeSessionRow<T extends SessionRow | null | undefined>(row: T): T
 }
 
 function normalizeSessionRows(rows: SessionRow[]): SessionRow[] {
-  return rows.map((row) => normalizeSessionRow(row) as SessionRow);
+  return rows.filter((row) => resourceAccessDb.canReadSessionRow(row)).map((row) => normalizeSessionRow(row) as SessionRow);
 }
 
 function normalizeProjectPathForProvider(provider: string, projectPath: string): string {
   void provider;
-  return normalizeProjectPath(projectPath);
+  const normalized = normalizeProjectPath(projectPath);
+  const alias = getConnection().prepare('SELECT workspace_path FROM workspace_aliases WHERE original_path = ?').get(normalized) as { workspace_path: string } | undefined;
+  return alias?.workspace_path ?? normalized;
 }
 
 export const sessionsDb = {
@@ -137,8 +142,8 @@ export const sessionsDb = {
     // keyed by the provider-native id for both columns. The ON CONFLICT path
     // covers legacy rows that predate the provider_session_id mapping.
     db.prepare(
-      `INSERT INTO sessions (session_id, provider, provider_session_id, custom_name, project_path, jsonl_path, isArchived, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, 0, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
+      `INSERT INTO sessions (session_id, provider, provider_session_id, custom_name, project_path, jsonl_path, owner_user_id, visibility, isArchived, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'private', 0, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))
        ON CONFLICT(session_id) DO UPDATE SET
          provider = excluded.provider,
          provider_session_id = excluded.provider_session_id,
@@ -158,6 +163,7 @@ export const sessionsDb = {
       customName ?? null,
       normalizedProjectPath,
       jsonlPath ?? null,
+      resourceAccessDb.defaultOwnerId(),
       createdAtValue,
       updatedAtValue,
       updatedAtValue
@@ -187,9 +193,9 @@ export const sessionsDb = {
     projectsDb.createProjectPath(normalizedProjectPath);
 
     db.prepare(
-      `INSERT INTO sessions (session_id, provider, provider_session_id, custom_name, project_path, jsonl_path, isArchived, created_at, updated_at)
-       VALUES (?, ?, NULL, ?, ?, NULL, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
-    ).run(sessionId, provider, customName ?? null, normalizedProjectPath);
+      `INSERT INTO sessions (session_id, provider, provider_session_id, custom_name, project_path, jsonl_path, owner_user_id, visibility, isArchived, created_at, updated_at)
+       VALUES (?, ?, NULL, ?, ?, NULL, ?, 'private', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    ).run(sessionId, provider, customName ?? null, normalizedProjectPath, getAccessActor()?.id ?? resourceAccessDb.defaultOwnerId());
 
     return sessionId;
   },
@@ -225,8 +231,8 @@ export const sessionsDb = {
       db.prepare('DELETE FROM sessions WHERE session_id = ? AND session_id <> ?')
         .run(input.providerSessionId, input.sessionId);
       db.prepare(
-        `INSERT INTO sessions (session_id, provider, provider_session_id, custom_name, project_path, jsonl_path, model, effort, forked_from_session_id, isArchived, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+        `INSERT INTO sessions (session_id, provider, provider_session_id, custom_name, project_path, jsonl_path, model, effort, forked_from_session_id, owner_user_id, visibility, isArchived, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'private', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
       ).run(
         input.sessionId,
         input.provider,
@@ -237,6 +243,7 @@ export const sessionsDb = {
         input.model,
         input.effort,
         input.forkedFromSessionId,
+        getAccessActor()?.id ?? resourceAccessDb.defaultOwnerId(),
       );
     })();
 
@@ -440,6 +447,7 @@ export const sessionsDb = {
   },
 
   updateSessionCustomName(sessionId: string, customName: string): void {
+    resourceAccessDb.assertManageSession(sessionId);
     const db = getConnection();
     db.prepare(
       `UPDATE sessions
@@ -460,7 +468,7 @@ export const sessionsDb = {
       )
       .get(sessionId) as SessionRow | undefined;
 
-    return normalizeSessionRow(row) ?? null;
+    return row && resourceAccessDb.canReadSessionRow(row) ? normalizeSessionRow(row) : null;
   },
 
   /**
@@ -482,7 +490,7 @@ export const sessionsDb = {
       )
       .get(providerSessionId) as SessionRow | undefined;
 
-    return normalizeSessionRow(row) ?? null;
+    return row && resourceAccessDb.canReadSessionRow(row) ? normalizeSessionRow(row) : null;
   },
 
   /**
@@ -505,6 +513,9 @@ export const sessionsDb = {
    */
   findLatestPendingAppSession(provider: string, projectPath: string): SessionRow | null {
     const db = getConnection();
+    // With several users, a project/timestamp heuristic cannot identify a transcript's owner.
+    const users = db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number };
+    if (users.count > 1) return null;
     const normalizedProjectPath = normalizeProjectPathForProvider(provider, projectPath);
     const row = db
       .prepare(
@@ -519,7 +530,7 @@ export const sessionsDb = {
       )
       .get(provider, normalizedProjectPath) as SessionRow | undefined;
 
-    return normalizeSessionRow(row) ?? null;
+    return row && resourceAccessDb.canReadSessionRow(row) ? normalizeSessionRow(row) : null;
   },
 
   getAllSessions(): SessionRow[] {
@@ -556,22 +567,14 @@ export const sessionsDb = {
          LEFT JOIN projects ON projects.project_path = sessions.project_path
          WHERE ${visibilityClause}
          ORDER BY julianday(COALESCE(sessions.updated_at, sessions.created_at)) DESC,
-                  sessions.session_id DESC
-         LIMIT ? OFFSET ?`
+                  sessions.session_id DESC`
       )
-      .all(limit, offset) as SessionRow[];
-    const countRow = db
-      .prepare(
-        `SELECT COUNT(*) AS count
-         FROM sessions
-         LEFT JOIN projects ON projects.project_path = sessions.project_path
-         WHERE ${visibilityClause}`
-      )
-      .get() as { count: number } | undefined;
+      .all() as SessionRow[];
+    const visibleRows = normalizeSessionRows(rows);
 
     return {
-      sessions: normalizeSessionRows(rows),
-      total: Number(countRow?.count ?? 0),
+      sessions: visibleRows.slice(offset, offset + limit),
+      total: visibleRows.length,
     };
   },
 
@@ -635,15 +638,15 @@ export const sessionsDb = {
          FROM sessions
          WHERE project_path = ?
            AND isArchived = 0
-         ORDER BY datetime(COALESCE(updated_at, created_at)) DESC, session_id DESC
-         LIMIT ? OFFSET ?`
+         ORDER BY datetime(COALESCE(updated_at, created_at)) DESC, session_id DESC`
       )
-      .all(normalizedProjectPath, limit, offset) as SessionRow[];
+      .all(normalizedProjectPath) as SessionRow[];
 
-    return normalizeSessionRows(rows);
+    return normalizeSessionRows(rows).slice(offset, offset + limit);
   },
 
   countSessionsByProjectPath(projectPath: string): number {
+    if (getAccessActor()) return this.getSessionsByProjectPath(projectPath).length;
     const db = getConnection();
     const normalizedProjectPath = normalizeProjectPath(projectPath);
     const row = db
@@ -665,6 +668,10 @@ export const sessionsDb = {
   },
 
   getSessionName(sessionId: string, provider: string): string | null {
+    if (getAccessActor()) {
+      const session = this.getSessionById(sessionId);
+      return session?.provider === provider ? session.custom_name : null;
+    }
     const db = getConnection();
     const row = db
       .prepare(
@@ -682,6 +689,7 @@ export const sessionsDb = {
    * row, metadata, and file path intact while toggling visibility.
    */
   updateSessionIsArchived(sessionId: string, isArchived: boolean): void {
+    resourceAccessDb.assertManageSession(sessionId);
     const db = getConnection();
     db.prepare(
       `UPDATE sessions
@@ -691,6 +699,7 @@ export const sessionsDb = {
   },
 
   deleteSessionById(sessionId: string): boolean {
+    resourceAccessDb.assertManageSession(sessionId);
     const db = getConnection();
     return db.prepare('DELETE FROM sessions WHERE session_id = ?').run(sessionId).changes > 0;
   },

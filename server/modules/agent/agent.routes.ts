@@ -4,8 +4,9 @@ import path from 'path';
 import express from 'express';
 
 import type { ProviderRunFunction } from '@/shared/types.js';
+import { authAuditDb } from '@/modules/database/index.js';
 
-import { normalizeProjectPath } from '../../shared/utils.js';
+import { normalizeProjectPath, withAccessActor } from '../../shared/utils.js';
 
 /** What the route reads off a session row it continues: the row, not the request, says which provider and project a session belongs to. */
 type AgentSessionRow = {
@@ -77,6 +78,15 @@ export function createAgentRouter(dependencies: AgentRouterDependencies): expres
    *    via API keys created in the UI. Keys are validated against the local database.
    */
   const validateExternalApiKey = (req, res, next) => {
+    const recordAction = (userId) => {
+      res.once('finish', () => {
+        try {
+          authAuditDb.record(userId, `${req.method} ${req.originalUrl.split('?')[0]}`, null, res.statusCode);
+        } catch (error) {
+          console.error('Failed to record agent API action', error);
+        }
+      });
+    };
     // Platform mode: Authentication is handled externally (e.g., by a proxy layer).
     // Trust the request and use the default user context.
     if (IS_PLATFORM) {
@@ -86,7 +96,8 @@ export function createAgentRouter(dependencies: AgentRouterDependencies): expres
           return res.status(500).json({ error: 'Platform mode: No user found in database' });
         }
         req.user = user;
-        return next();
+        recordAction(user.id);
+        return withAccessActor({ id: user.id, role: user.role }, next);
       } catch (error) {
         console.error('Platform mode error:', error);
         return res.status(500).json({ error: 'Platform mode: Failed to fetch user' });
@@ -107,7 +118,8 @@ export function createAgentRouter(dependencies: AgentRouterDependencies): expres
     }
 
     req.user = user;
-    next();
+    recordAction(user.id);
+    withAccessActor({ id: user.id, role: user.role }, next);
   };
 
   /**

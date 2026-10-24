@@ -5,6 +5,7 @@ import { Badge, Button, LLMProviderLogo } from '@/shared/ui';
 import type { AgentProvider, ProviderAuthStatus, ProviderAuthSubscriptionOverride } from '@/shared/types';
 
 type AccountContentProps = {
+  canLogin?: boolean;
   agent: AgentProvider;
   authStatus: ProviderAuthStatus;
   onLogin: () => void;
@@ -95,7 +96,7 @@ function SubscriptionOverrideNotice({ override }: SubscriptionOverrideNoticeProp
 }
 
 /** Rendered by AgentCategoryContentSection for the "account" category to show sign-in state for one provider. */
-export default function AccountContent({ agent, authStatus, onLogin }: AccountContentProps) {
+export default function AccountContent({ agent, authStatus, onLogin, canLogin = true }: AccountContentProps) {
   const { t } = useTranslation('settings');
   const config = agentConfig[agent];
 
@@ -153,7 +154,7 @@ export default function AccountContent({ agent, authStatus, onLogin }: AccountCo
             <SubscriptionOverrideNotice override={authStatus.subscriptionOverride} />
           )}
 
-          {authStatus.method !== 'api_key' && (
+          {canLogin && authStatus.method !== 'api_key' && (
             <div className="border-t border-border/50 pt-4">
               <div className="flex items-center justify-between">
                 <div>

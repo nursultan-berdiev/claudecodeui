@@ -3,12 +3,28 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+    identity_provider TEXT NOT NULL DEFAULT 'local',
+    identity_subject TEXT,
+    auth_version INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_login DATETIME,
     is_active BOOLEAN DEFAULT 1,
     git_name TEXT,
     git_email TEXT,
-    has_completed_onboarding BOOLEAN DEFAULT 0
+    has_completed_onboarding BOOLEAN DEFAULT 0,
+    must_change_password BOOLEAN NOT NULL DEFAULT 0
+);
+`;
+
+export const AUDIT_EVENTS_TABLE_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_user_id INTEGER,
+    action TEXT NOT NULL,
+    target TEXT,
+    status_code INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 `;
 
@@ -142,6 +158,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     -- normally. Informational only: a fork is a fully independent provider
     -- session, and deleting the source does not affect it.
     forked_from_session_id TEXT,
+    owner_user_id INTEGER,
+    visibility TEXT NOT NULL DEFAULT 'private',
     isArchived BOOLEAN DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -157,6 +175,61 @@ CREATE TABLE IF NOT EXISTS scan_state (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   last_scanned_at TIMESTAMP NULL
 );
+`;
+
+export const COMPANY_ACCESS_SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS workspace_aliases (
+  original_path TEXT PRIMARY KEY,
+  workspace_path TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS departments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS department_members (
+  department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (department_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS session_department_shares (
+  session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+  department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+  PRIMARY KEY (session_id, department_id)
+);
+CREATE TABLE IF NOT EXISTS managed_skills (
+  id TEXT PRIMARY KEY,
+  owner_user_id INTEGER NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL DEFAULT 'all',
+  content TEXT NOT NULL,
+  files_json TEXT NOT NULL DEFAULT '[]',
+  visibility TEXT NOT NULL DEFAULT 'private',
+  source_path TEXT UNIQUE,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+-- Sources of deleted imported skills; discovery must not import them again.
+CREATE TABLE IF NOT EXISTS dismissed_skill_sources (
+  source_path TEXT PRIMARY KEY,
+  dismissed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS skill_department_shares (
+  skill_id TEXT NOT NULL REFERENCES managed_skills(id) ON DELETE CASCADE,
+  department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+  PRIMARY KEY (skill_id, department_id)
+);
+CREATE TABLE IF NOT EXISTS asset_owners (
+  filename TEXT PRIMARY KEY,
+  owner_user_id INTEGER NOT NULL REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS session_assets (
+  session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+  filename TEXT NOT NULL,
+  PRIMARY KEY (session_id, filename)
+);
+CREATE INDEX IF NOT EXISTS idx_department_members_user ON department_members(user_id);
 `;
 
 export const APP_CONFIG_TABLE_SCHEMA_SQL = `
@@ -255,6 +328,7 @@ export const INIT_SCHEMA_SQL = `
 PRAGMA foreign_keys = ON;
 
 ${USER_TABLE_SCHEMA_SQL}
+${AUDIT_EVENTS_TABLE_SCHEMA_SQL}
 -- Indexes for performance for user lookups
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active);
@@ -286,6 +360,7 @@ ${PROJECTS_TABLE_SCHEMA_SQL}
 -- Creating them here can fail on upgraded installs where projects lacks those columns.
 
 ${SESSIONS_TABLE_SCHEMA_SQL}
+${COMPANY_ACCESS_SCHEMA_SQL}
 CREATE INDEX IF NOT EXISTS idx_session_ids_lookup ON sessions(session_id);
 -- NOTE: This index is created in migrations after sessions is rebuilt to include project_path.
 -- Creating it here can fail on upgraded installs where the legacy sessions table has no project_path.
