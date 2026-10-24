@@ -53,7 +53,7 @@ import { assetsRoutes } from './modules/assets/index.js';
 import { fileTreeRoutes } from './modules/file-tree/index.js';
 import { worktreesRoutes } from './modules/worktrees/index.js';
 import { createCompanyRouter } from './modules/company/index.js';
-import { providerSkillsService } from './modules/providers/index.js';
+import { providerAuthService, providerSkillsService } from './modules/providers/index.js';
 import { connectedClients, WS_OPEN_STATE } from './modules/websocket/index.js';
 import browserUseMcpRoutes from './modules/browser-use/browser-use-mcp.routes.js';
 import { browserUseService } from './modules/browser-use/browser-use.service.js';
@@ -162,6 +162,7 @@ app.use('/api', validateApiKey);
 app.use('/api/auth', authRoutes);
 app.use('/api/company', authenticateToken, createCompanyRouter({
     discoverSkills: (provider) => providerSkillsService.listProviderSkills(provider as any),
+    providerAuthStatus: (provider) => providerAuthService.getProviderAuthStatus(provider),
     onAccessChanged: () => {
         for (const client of connectedClients) {
             if (client.readyState === WS_OPEN_STATE) client.send(JSON.stringify({ kind: 'company_access_changed' }));

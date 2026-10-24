@@ -192,6 +192,7 @@ function ChatInterface({
   const {
     input,
     setInput,
+    skillScope,
     textareaRef,
     inputHighlightRef,
     isTextareaExpanded,
@@ -535,6 +536,8 @@ function ChatInterface({
           availablePermissionModes={availablePermissionModes}
           onSelectPermissionMode={selectPermissionMode}
           providerLabel={selectedProviderLabel}
+          provider={provider}
+          skillScope={skillScope}
           effort={currentProviderEffort}
           availableEffortOptions={currentProviderEffortOptions}
           onSelectEffort={handleSelectComposerEffort}

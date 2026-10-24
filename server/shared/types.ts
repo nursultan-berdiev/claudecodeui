@@ -1583,10 +1583,22 @@ export type ResourceVisibility = 'private' | 'departments' | 'company';
 export type DepartmentRecord = { id: number; name: string; description: string; memberIds: number[] };
 /** A share configuration returned to resource owners; departments are explicit grant ids. */
 export type ResourceSharing = { ownerUserId: number | null; visibility: ResourceVisibility; departmentIds: number[]; canManage: boolean };
+/** Skill sharing adds hand-picked colleagues to the chat levels; chats never accept `users`, so it stays skill-only. */
+export type SkillVisibility = ResourceVisibility | 'users';
+/** Catalog card of a managed skill: everything the catalog and the chat picker show, without SKILL.md or files. */
+export type ManagedSkillSummary = {
+  id: string; name: string; description: string; category: string; examplePrompt: string; provider: string; version: number;
+  ownerUserId: number; ownerName?: string; ownerDepartments: string[];
+  visibility: SkillVisibility; departmentIds: number[]; userIds: number[]; canManage: boolean;
+  isFavorite: boolean; lastUsedAt: string | null; fileCount: number; createdAt: string; updatedAt: string;
+};
 /** Managed skill content and supporting files; visibility controls both UI discovery and runtime use. */
-export type ManagedSkillRecord = ResourceSharing & {
-  ownerName?: string;
-  id: string; name: string; description: string; provider: string; content: string;
+export type ManagedSkillRecord = ManagedSkillSummary & {
+  content: string;
   files: Array<{ relativePath: string; content: string; encoding?: 'utf8' | 'base64' }>;
-  createdAt: string; updatedAt: string;
+};
+/** One stored revision of a managed skill, listed in its history so a manager can restore it. */
+export type ManagedSkillVersion = {
+  version: number; name: string; description: string; category: string; createdAt: string;
+  createdByName: string | null; restoredFrom: number | null; isCurrent: boolean;
 };

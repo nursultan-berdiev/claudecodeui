@@ -74,8 +74,7 @@ export function createProviderRuntimeService(
     if (getAccessActor()) {
       const workspace = await validateWorkspacePath(String(options.cwd ?? options.projectPath ?? ''));
       if (!workspace.valid) throw new AppError('Chat workspace is unavailable', { code: 'INVALID_WORKSPACE_PATH', statusCode: 403 });
-      await companySkillsService.importDiscovered(providerName, await provider.skills.listSkills({ workspacePath: typeof options.cwd === 'string' ? options.cwd : undefined }));
-      command = await companySkillsService.preparePrompt(providerName, command, String(options.sessionId ?? 'new'));
+      command = await companySkillsService.preparePrompt(providerName, command, String(options.sessionId ?? 'new'), options.skillIds);
     }
     // Our Auto preset is unattended execution; Claude's native auto can fall back to manual approval.
     const runtimeOptions = options.permissionMode === 'auto'

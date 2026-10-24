@@ -1,6 +1,7 @@
 import { providerRegistry } from '@/modules/providers/provider.registry.js';
 import type { LLMProvider, ProviderAuthStatus } from '@/shared/types.js';
 
+/** Used by provider routes and, through the barrel, by the company skill helper to check agent sign-in. */
 export const providerAuthService = {
   /**
    * Resolves a provider and returns its installation/authentication status.

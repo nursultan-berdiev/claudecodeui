@@ -215,3 +215,14 @@ export const PROVIDER_PERMISSION_PREFERENCE_KEYS: Record<LLMProvider, UserPrefer
   codex: 'codexPermissions',
   opencode: 'opencodePermissions',
 };
+
+// ---------------------------
+
+//----------------- SKILLS CATALOG ------------
+/** Display name of each agent a library skill can be limited to; drives the catalog agent filter and the editor's agent select. */
+export const SKILL_AGENT_LABELS: Record<LLMProvider, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  cursor: 'Cursor',
+  opencode: 'OpenCode',
+};

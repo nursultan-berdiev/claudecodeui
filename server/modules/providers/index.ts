@@ -1,5 +1,7 @@
 export { sessionSynchronizerService } from './services/session-synchronizer.service.js';
 export { providerSkillsService } from './services/skills.service.js';
+// providerAuthService: used by the server entrypoint so the company skill helper only offers signed-in agents.
+export { providerAuthService } from './services/provider-auth.service.js';
 export { providerMcpService } from './services/mcp.service.js';
 export { providerRuntimeService } from './services/provider-runtime.service.js';
 

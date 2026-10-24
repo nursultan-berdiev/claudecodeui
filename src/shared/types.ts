@@ -1369,13 +1369,32 @@ export type ResourceVisibility = 'private' | 'departments' | 'company';
 export type CompanyDepartment = { id: number; name: string; description: string; memberIds: number[] };
 /** Server-authoritative sharing state and permission to change it. */
 export type ResourceSharing = { ownerUserId: number | null; visibility: ResourceVisibility; departmentIds: number[]; canManage: boolean };
-/** Skill markdown and supporting files edited by the managed library. */
-export type CompanySkill = ResourceSharing & {
-  ownerName?: string;
-  id: string; name: string; description: string; provider: string; content: string;
-  files: Array<{ relativePath: string; content: string; encoding?: 'utf8' | 'base64' }>;
-  createdAt: string; updatedAt: string;
+/** Skill sharing adds hand-picked colleagues to the chat levels; only skills accept `users`. */
+export type SkillVisibility = ResourceVisibility | 'users';
+/** The agent a library skill is limited to, or `all` for a skill every agent may use. */
+export type SkillAgent = LLMProvider | 'all';
+/** A supporting file of a skill; binary content travels as base64. */
+export type CompanySkillFile = { relativePath: string; content: string; encoding?: 'utf8' | 'base64' };
+/** A catalog card: what the skills catalog and the chat skill picker show, without SKILL.md or files. */
+export type CompanySkillSummary = {
+  id: string; name: string; description: string; category: string; examplePrompt: string; provider: SkillAgent; version: number;
+  ownerUserId: number; ownerName?: string; ownerDepartments: string[];
+  visibility: SkillVisibility; departmentIds: number[]; userIds: number[]; canManage: boolean;
+  isFavorite: boolean; lastUsedAt: string | null; fileCount: number; createdAt: string; updatedAt: string;
 };
+/** A skill with its SKILL.md and supporting files, as opened in the catalog editor. */
+export type CompanySkill = CompanySkillSummary & { content: string; files: CompanySkillFile[] };
+/** One stored revision listed in a skill's history; managers restore it as a new version. */
+export type CompanySkillVersion = {
+  version: number; name: string; description: string; category: string; createdAt: string;
+  createdByName: string | null; restoredFrom: number | null; isCurrent: boolean;
+};
+/** An active colleague offered by the "selected people" sharing picker. */
+export type CompanyPerson = { id: number; username: string };
+/** One importable skill as the server lists it; `key` is what the import request sends back. */
+export type SkillImportItem = { key: string; name: string; description: string; scope: string; pluginName?: string; alreadyImported: boolean; inLibrary: boolean };
+/** Structured draft from the skill helper; the editor turns it into SKILL.md fields. */
+export type SkillHelperDraft = { name: string; description: string; category: string; examplePrompt: string; body: string };
 
 /** The coding-agent CLI a settings screen is configuring, aliasing LLMProvider so agent-scoped settings read as being about an agent rather than a chat model. */
 export type AgentProvider = LLMProvider;

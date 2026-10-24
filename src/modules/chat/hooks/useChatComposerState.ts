@@ -31,6 +31,7 @@ import { describeBackgroundTask, ownBackgroundTasks } from '@/modules/chat/utils
 import { useFileMentions } from '@/modules/chat/hooks/useFileMentions';
 import { useInputHistory } from '@/modules/chat/hooks/useInputHistory';
 import { useSlashCommands } from '@/modules/chat/hooks/useSlashCommands';
+import { completeComposerSkillSend, readComposerSkillIds } from '@/modules/chat/hooks/useComposerSkillSelection';
 
 type UseChatComposerStateArgs = {
   selectedProject: Project | null;
@@ -622,6 +623,7 @@ export function useChatComposerState({
     );
 
     const toolsSettings = getToolsSettings();
+    const skillIds = readComposerSkillIds(draftScopeRef.current);
 
     return {
       model: currentProviderModel,
@@ -630,6 +632,7 @@ export function useChatComposerState({
       toolsSettings,
       skipPermissions: toolsSettings?.skipPermissions || false,
       sessionSummary: getNotificationSessionSummary(selectedSession, currentInput),
+      ...(skillIds.length ? { skillIds } : {}),
     };
   }, [
     currentProviderEffort,
@@ -716,6 +719,7 @@ export function useChatComposerState({
         // the session-switch return below — the queued text must be
         // recallable even when it dispatches without this composer.
         recordSentMessage(currentInput, queuedSessionKey);
+        completeComposerSkillSend(draftScopeRef.current, queuedSessionKey);
 
         // The server owns dispatch after persistence. If the user changed
         // sessions during upload, the durable record is already enough; do
@@ -916,6 +920,7 @@ export function useChatComposerState({
       // navigated to. Queued drafts were recorded when they were queued; the
       // consecutive-duplicate check keeps this second call a no-op.
       recordSentMessage(currentInput, targetSessionId);
+      completeComposerSkillSend(draftScopeRef.current, targetSessionId);
       setInput('');
       inputValueRef.current = '';
       resetCommandMenuState();
@@ -1258,6 +1263,7 @@ export function useChatComposerState({
   return {
     input,
     setInput,
+    skillScope: draftScope,
     editingAnchorId,
     beginEditMessage,
     cancelEditMessage,

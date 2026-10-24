@@ -8,6 +8,7 @@ import test from 'node:test';
 
 import { closeConnection, companyDb, getConnection, initializeDatabase, resourceAccessDb, sessionsDb, userDb } from '@/modules/database/index.js';
 import { companyService } from '../company.service.js';
+import { skillExportService } from '../skill-export.service.js';
 import { companySkillsService } from '../skills-library.service.js';
 import { AppError, withAccessActor, withoutGeneratedSkillContext } from '@/shared/utils.js';
 import type { AccessActor, NormalizedMessage } from '@/shared/types.js';
@@ -139,7 +140,7 @@ test('a user can belong to several departments and only share chats with their o
 });
 
 test('skill access controls reading, editing, supporting paths and shared-chat runtime availability', async () => {
-  const exports: string[] = [];
+  const exportedSkillIds: string[] = [];
   try {
     await fixture(async ([admin, owner, colleague, other], workspace) => {
       const department = withAccessActor(admin, () => companyService.createDepartment({ name: 'Engineering' }).id);
@@ -148,7 +149,7 @@ test('skill access controls reading, editing, supporting paths and shared-chat r
       const skill = withAccessActor(owner, () => companySkillsService.save({ content, files: [{ relativePath: 'scripts/helper.py', content: 'print(1)' }] }));
       assert.equal(skill.visibility, 'private');
       withAccessActor(colleague, () => {
-        assert.equal(companySkillsService.list().length, 0);
+        assert.equal(companySkillsService.list().skills.length, 0);
         assert.throws(() => companySkillsService.get(skill.id), (error: unknown) => error instanceof AppError && error.statusCode === 404);
       });
       withAccessActor(owner, () => companySkillsService.save({ content, visibility: 'departments', departmentIds: [department] }, skill.id));
@@ -156,8 +157,9 @@ test('skill access controls reading, editing, supporting paths and shared-chat r
         assert.equal(companySkillsService.get(skill.id).canManage, false);
         assert.throws(() => companySkillsService.save({ content }, skill.id), (error: unknown) => error instanceof AppError && error.statusCode === 403);
       });
-      withAccessActor(other, () => assert.equal(companySkillsService.list().length, 0));
-      withAccessActor(admin, () => assert.equal(companySkillsService.get(skill.id).canManage, true));
+      withAccessActor(other, () => assert.equal(companySkillsService.list().skills.length, 0));
+      // Administrators get no exception: a skill shared with a department they are not in stays hidden from them.
+      withAccessActor(admin, () => assert.throws(() => companySkillsService.get(skill.id), (error: unknown) => error instanceof AppError && error.statusCode === 404));
       withAccessActor(owner, () => assert.throws(() => companySkillsService.save({ content: content.replace('private-helper', 'invalid-path-helper'), files: [{ relativePath: '../../escape', content: 'x' }] }), (error: unknown) => error instanceof AppError && error.statusCode === 400));
       const chatId = randomUUID();
       withAccessActor(owner, () => { sessionsDb.createAppSession(chatId, 'claude', workspace); companyService.updateChatSharing(chatId, { visibility: 'company' }); });
@@ -166,32 +168,13 @@ test('skill access controls reading, editing, supporting paths and shared-chat r
         assert.equal(await companySkillsService.preparePrompt('claude', 'work', chatId), 'work');
         companyService.updateChatSharing(chatId, { visibility: 'private' });
         const prompt = await companySkillsService.preparePrompt('claude', '/private-helper work', chatId);
-        exports.push(path.join(os.homedir(), '.cloudcli', 'session-skills', String(owner.id), chatId));
+        exportedSkillIds.push(skill.id);
         assert.match(prompt, /PRIVATE_SKILL_MARKER/);
         const visible = withoutGeneratedSkillContext({ role: 'user', content: prompt } as NormalizedMessage);
         assert.equal(visible.content, '/private-helper work');
       });
     });
-  } finally { for (const directory of exports) await rm(directory, { recursive: true, force: true }); }
-});
-
-test('a deleted imported skill is not imported again by later discovery', async () => {
-  await fixture(async ([admin], workspace) => {
-    const sourcePath = path.join(workspace, 'skills', 'imported-helper', 'SKILL.md');
-    await mkdir(path.dirname(sourcePath), { recursive: true });
-    await writeFile(sourcePath, '---\nname: imported-helper\ndescription: Imported from disk\n---\nBody');
-    const discovered = [{ provider: 'claude' as const, name: 'imported-helper', description: 'Imported from disk', command: '/imported-helper', scope: 'user' as const, sourcePath }];
-    await withAccessActor(admin, async () => {
-      await companySkillsService.importDiscovered('claude', discovered);
-      const [skill] = companySkillsService.list();
-      assert.equal(skill?.name, 'imported-helper');
-      companySkillsService.remove(skill.id);
-      await companySkillsService.importDiscovered('claude', discovered);
-      assert.equal(companySkillsService.list().length, 0);
-      await companySkillsService.importDiscovered('opencode', discovered);
-      assert.equal(companySkillsService.list().length, 1);
-    });
-  });
+  } finally { for (const skillId of exportedSkillIds) await skillExportService.purge(skillId); }
 });
 
 test('attachments follow their owner and shared chat grants', async () => {

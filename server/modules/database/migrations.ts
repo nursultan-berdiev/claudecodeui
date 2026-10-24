@@ -547,6 +547,19 @@ export const runMigrations = (db: Database) => {
     db.exec(`UPDATE sessions SET owner_user_id = (SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1)
       WHERE owner_user_id IS NULL`);
     db.exec(COMPANY_ACCESS_SCHEMA_SQL);
+    const skillColumns = getTableInfo(db, 'managed_skills').map((column) => column.name);
+    addColumnToTableIfNotExists(db, 'managed_skills', skillColumns, 'category', "TEXT NOT NULL DEFAULT ''");
+    addColumnToTableIfNotExists(db, 'managed_skills', skillColumns, 'example_prompt', "TEXT NOT NULL DEFAULT ''");
+    addColumnToTableIfNotExists(db, 'managed_skills', skillColumns, 'version', 'INTEGER NOT NULL DEFAULT 1');
+    addColumnToTableIfNotExists(db, 'managed_skills', skillColumns, 'origin', 'TEXT');
+    addColumnToTableIfNotExists(db, 'managed_skills', skillColumns, 'file_count', 'INTEGER NOT NULL DEFAULT 0');
+    // Stored so catalog reads never parse files_json (up to 30MB per skill); filled once here, then kept by every skill write.
+    if (!skillColumns.includes('file_count')) {
+      db.exec('UPDATE managed_skills SET file_count = json_array_length(files_json) WHERE json_valid(files_json)');
+    }
+    // source_path is globally unique, so per-user imports record their source in origin instead.
+    db.exec('UPDATE managed_skills SET origin = source_path WHERE origin IS NULL AND source_path IS NOT NULL');
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_skills_owner_origin ON managed_skills(owner_user_id, origin) WHERE origin IS NOT NULL');
     if (process.env.CLOUDCLI_CONTAINER_DEPLOYMENT === 'true' && process.env.WORKSPACES_ROOT) {
       const originalPath = os.homedir();
       const workspacePath = path.join(process.env.WORKSPACES_ROOT, 'chats');

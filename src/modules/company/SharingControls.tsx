@@ -6,7 +6,7 @@ type SharingControlsProps = {
   disabled?: boolean; onChange(value: { visibility: ResourceVisibility; departmentIds: number[] }): void;
 };
 
-/** Used by ChatSharing and SkillsLibraryPage for the same private/department/company access choices. */
+/** Used by ChatSharing for the private/department/company access choices of a chat. */
 export function SharingControls({ visibility, departmentIds, departments, disabled, onChange }: SharingControlsProps) {
   const { t } = useTranslation('settings');
   return <div className="space-y-3">

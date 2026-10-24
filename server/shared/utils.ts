@@ -47,6 +47,13 @@ export function getAccessActor(): AccessActor | null {
   return actorStorage.getStore() ?? null;
 }
 
+/** Used by company skill services that must refuse anonymous calls; throws 401 when no user is bound. */
+export function requireAccessActor(): AccessActor {
+  const actor = getAccessActor();
+  if (!actor) throw new AppError('Authentication required', { code: 'AUTH_REQUIRED', statusCode: 401 });
+  return actor;
+}
+
 /** Used by the WebSocket gateway to retain the viewer identity for later broadcasts. */
 export function bindConnectionActor(connection: object, actor: AccessActor): void {
   connectionActors.set(connection, actor);
@@ -60,7 +67,7 @@ export function getConnectionActor(connection: object): AccessActor | null {
 /** Used by live and persisted history adapters to keep generated skill context out of the user's visible message. */
 export function withoutGeneratedSkillContext(message: NormalizedMessage): NormalizedMessage {
   if (message.role !== 'user' || typeof message.content !== 'string') return message;
-  const content = message.content.replace(/^<available_skills>[\s\S]*?<\/available_skills>\n(?:<requested_skill>[\s\S]*?<\/requested_skill>\n)?/, '');
+  const content = message.content.replace(/^(?:<available_skills>[\s\S]*?<\/available_skills>\n)?(?:<requested_skill(?:\s[^>]*)?>[\s\S]*?<\/requested_skill>\n)*/, '');
   return content === message.content ? message : { ...message, content };
 }
 
@@ -795,6 +802,14 @@ export const writeJsonConfig = async (filePath: string, data: Record<string, unk
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
 };
+
+// ---------------------------
+//----------------- MANAGED SKILL LIMITS ------------
+/**
+ * Size limits of one library skill, enforced when it is saved, imported from an agent folder or downloaded
+ * from the Codex catalog: SKILL.md bytes, number of attached files and total bytes of those files.
+ */
+export const MANAGED_SKILL_LIMITS = { markdownBytes: 1024 * 1024, files: 500, fileBytes: 30 * 1024 * 1024 } as const;
 
 // ---------------------------
 //----------------- PROVIDER SKILL FILE UTILITIES ------------

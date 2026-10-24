@@ -69,6 +69,11 @@ export const companyService = {
     return { success: true };
   },
   deleteDepartment(id: number) { requireAdmin(); validateDepartmentId(id); companyDb.deleteDepartment(id); return { success: true }; },
+  /** Active colleagues for the "selected people" picker; only ids and logins, no roles or memberships. */
+  people() {
+    requireActor();
+    return { people: userDb.listUsers().filter((user) => user.is_active === 1).map((user) => ({ id: Number(user.id), username: user.username })) };
+  },
   chatSharing(sessionId: string) { requireActor(); return resourceAccessDb.sessionSharing(sessionId); },
   updateChatSharing(sessionId: string, input: Record<string, unknown>) {
     const sharing = validateResourceSharing(input, true);
