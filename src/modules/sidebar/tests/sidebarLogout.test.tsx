@@ -15,10 +15,9 @@ vi.mock('@/modules/company', () => ({ NewChatButton: () => null }));
 
 const t = ((key: string) => (key === 'common:navigation.logout' ? 'Logout' : key)) as unknown as TFunction;
 
-const renderFooter = (updates: { updateAvailable?: boolean; restartRequired?: boolean } = {}) => render(
+const renderFooter = (updates: { restartRequired?: boolean } = {}) => render(
   <MemoryRouter>
-    <SidebarFooter updateAvailable={updates.updateAvailable ?? false} restartRequired={updates.restartRequired ?? false}
-      releaseInfo={null} latestVersion="9.9.9" onShowVersionModal={() => {}} onShowSettings={() => {}} t={t} />
+    <SidebarFooter restartRequired={updates.restartRequired ?? false} onShowSettings={() => {}} t={t} />
   </MemoryRouter>,
 );
 
@@ -31,16 +30,14 @@ test('the expanded sidebar names the signed-in user and logs out from their menu
   assert.equal(logout.mock.calls.length, 1);
 });
 
-test('server update notices are shown to administrators only', () => {
+test('the restart notice is shown to administrators only', () => {
   authUser.role = 'member';
-  const member = renderFooter({ updateAvailable: true, restartRequired: true });
-  assert.equal(screen.queryByText('version.updateAvailable'), null);
+  const member = renderFooter({ restartRequired: true });
   assert.equal(screen.queryByText('version.restartRequired'), null);
   member.unmount();
 
   authUser.role = 'admin';
-  renderFooter({ updateAvailable: true, restartRequired: true });
-  assert.ok(screen.getByText('version.updateAvailable'));
+  renderFooter({ restartRequired: true });
   assert.ok(screen.getByText('version.restartRequired'));
   authUser.role = 'member';
 });
@@ -48,8 +45,7 @@ test('server update notices are shown to administrators only', () => {
 test('the collapsed sidebar keeps a logout action', () => {
   logout.mockClear();
   render(
-    <SidebarCollapsed onExpand={() => {}} onNewSession={() => {}} onShowSettings={() => {}} updateAvailable={false}
-      restartRequired={false} onShowVersionModal={() => {}} t={t} />,
+    <SidebarCollapsed onExpand={() => {}} onNewSession={() => {}} onShowSettings={() => {}} restartRequired={false} t={t} />,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
   assert.equal(logout.mock.calls.length, 1);

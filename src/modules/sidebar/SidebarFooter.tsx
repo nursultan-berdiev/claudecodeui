@@ -1,18 +1,13 @@
-import { Settings, ArrowUpCircle, AlertTriangle, BookOpen, LogOut } from 'lucide-react';
+import { Settings, AlertTriangle, BookOpen, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { TFunction } from 'i18next';
 
 import { useAuth } from '@/modules/auth';
 import { ActionMenu, type ActionMenuItem } from '@/shared/ui';
 import { IS_PLATFORM } from '@/shared/utils';
-import type { ReleaseInfo } from '@/shared/types';
 
 type SidebarFooterProps = {
-  updateAvailable: boolean;
   restartRequired: boolean;
-  releaseInfo: ReleaseInfo | null;
-  latestVersion: string | null;
-  onShowVersionModal: () => void;
   onShowSettings: () => void;
   t: TFunction;
 };
@@ -23,11 +18,7 @@ type SidebarFooterProps = {
  * whoever runs the server, so only administrators see them.
  */
 export default function SidebarFooter({
-  updateAvailable,
   restartRequired,
-  releaseInfo,
-  latestVersion,
-  onShowVersionModal,
   onShowSettings,
   t,
 }: SidebarFooterProps) {
@@ -60,19 +51,6 @@ export default function SidebarFooter({
             {t('version.restartRequired')}
           </span>
         </div>
-      )}
-
-      {isAdmin && updateAvailable && (
-        <button
-          className="mb-1 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-accent"
-          onClick={onShowVersionModal}
-        >
-          <ArrowUpCircle className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm text-foreground">{releaseInfo?.title || `v${latestVersion}`}</span>
-            <span className="text-xs text-muted-foreground">{t('version.updateAvailable')}</span>
-          </span>
-        </button>
       )}
 
       <ActionMenu
