@@ -241,3 +241,17 @@ export const getPageTitle = (
   const displayName = selectedProject?.displayName?.trim();
   return displayName ? `${displayName} - ${DEFAULT_PAGE_TITLE}` : DEFAULT_PAGE_TITLE;
 };
+
+//----------------- SKILLS CATALOG ------------
+/** Text of a caught value for an inline error line; used by the skills catalog dialogs and hooks. */
+export const getErrorMessage = (caught: unknown): string => (caught instanceof Error ? caught.message : String(caught));
+
+/**
+ * Formats a server timestamp as a local date for the skills catalog cards and version history.
+ * SQLite `CURRENT_TIMESTAMP` values are UTC without a zone ("2026-10-25 09:30:00"), so they are read as UTC.
+ */
+export const formatSkillDate = (value: string | null | undefined, locale?: string): string => {
+  if (!value) return '';
+  const date = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : `${value.replace(' ', 'T')}Z`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+};

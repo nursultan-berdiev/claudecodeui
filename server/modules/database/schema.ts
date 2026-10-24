@@ -210,15 +210,48 @@ CREATE TABLE IF NOT EXISTS managed_skills (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
--- Sources of deleted imported skills; discovery must not import them again.
-CREATE TABLE IF NOT EXISTS dismissed_skill_sources (
-  source_path TEXT PRIMARY KEY,
-  dismissed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
 CREATE TABLE IF NOT EXISTS skill_department_shares (
   skill_id TEXT NOT NULL REFERENCES managed_skills(id) ON DELETE CASCADE,
   department_id INTEGER NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
   PRIMARY KEY (skill_id, department_id)
+);
+CREATE TABLE IF NOT EXISTS skill_user_shares (
+  skill_id TEXT NOT NULL REFERENCES managed_skills(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (skill_id, user_id)
+);
+-- Supporting files of skill versions, keyed by sha256 so unchanged files are stored once across versions.
+CREATE TABLE IF NOT EXISTS skill_file_blobs (
+  hash TEXT PRIMARY KEY,
+  files_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS skill_versions (
+  skill_id TEXT NOT NULL REFERENCES managed_skills(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  category TEXT NOT NULL DEFAULT '',
+  example_prompt TEXT NOT NULL DEFAULT '',
+  provider TEXT NOT NULL,
+  content TEXT NOT NULL,
+  files_hash TEXT NOT NULL,
+  restored_from INTEGER,
+  created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (skill_id, version)
+);
+CREATE TABLE IF NOT EXISTS skill_favorites (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  skill_id TEXT NOT NULL REFERENCES managed_skills(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, skill_id)
+);
+CREATE TABLE IF NOT EXISTS skill_recent (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  skill_id TEXT NOT NULL REFERENCES managed_skills(id) ON DELETE CASCADE,
+  used_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  use_count INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (user_id, skill_id)
 );
 CREATE TABLE IF NOT EXISTS asset_owners (
   filename TEXT PRIMARY KEY,
@@ -230,6 +263,8 @@ CREATE TABLE IF NOT EXISTS session_assets (
   PRIMARY KEY (session_id, filename)
 );
 CREATE INDEX IF NOT EXISTS idx_department_members_user ON department_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_skill_user_shares_user ON skill_user_shares(user_id);
+CREATE INDEX IF NOT EXISTS idx_skill_recent_user ON skill_recent(user_id, used_at);
 `;
 
 export const APP_CONFIG_TABLE_SCHEMA_SQL = `

@@ -14,7 +14,7 @@ import { PlusIcon, Loader2, ArrowUpIcon, PencilIcon } from 'lucide-react';
 
 import { useVoiceInput } from '@/modules/chat/hooks/useVoiceInput';
 import { useVoiceAvailable } from '@/modules/chat/hooks/useVoiceAvailable';
-import type { QueuedDraft, ScheduledMessage, SlashCommand,SessionActivity,PendingPermissionRequest,PermissionMode,ProviderModelOption } from '@/shared/types';
+import type { LLMProvider, QueuedDraft, ScheduledMessage, SlashCommand,SessionActivity,PendingPermissionRequest,PermissionMode,ProviderModelOption } from '@/shared/types';
 import {
   PromptInput,
   PromptInputHeader,
@@ -35,6 +35,8 @@ import { ScheduleMessagePopover } from '@/modules/chat/composer/ScheduleMessageP
 import { ScheduledMessageList } from '@/modules/chat/composer/ScheduledMessageList';
 import ComposerModelMenu from '@/modules/chat/composer/ComposerModelMenu';
 import ComposerPermissionMenu from '@/modules/chat/composer/ComposerPermissionMenu';
+import ComposerSkillsMenu from '@/modules/chat/composer/ComposerSkillsMenu';
+import ComposerSkillChips from '@/modules/chat/composer/ComposerSkillChips';
 
 type MentionableFile = {
   name: string;
@@ -55,6 +57,9 @@ type ChatComposerProps = {
   availablePermissionModes: PermissionMode[];
   onSelectPermissionMode: (mode: PermissionMode) => void;
   providerLabel: string;
+  provider: LLMProvider;
+  /** Chat the skill picker writes to: the session id, or `project:<id>` before the first message. */
+  skillScope: string | null;
   effort: string;
   availableEffortOptions: NonNullable<ProviderModelOption['effort']>['values'];
   onSelectEffort: (effort: string) => void;
@@ -121,6 +126,8 @@ export default function ChatComposer({
   availablePermissionModes,
   onSelectPermissionMode,
   providerLabel,
+  provider,
+  skillScope,
   effort,
   availableEffortOptions,
   onSelectEffort,
@@ -374,6 +381,8 @@ export default function ChatComposer({
             </PromptInputHeader>
           )}
 
+          <ComposerSkillChips scope={skillScope} />
+
           <input {...getInputProps()} />
 
           <PromptInputBody>
@@ -421,6 +430,8 @@ export default function ChatComposer({
                 onSchedule={onScheduleMessage}
               />
             )}
+
+            <ComposerSkillsMenu scope={skillScope} provider={provider} />
 
             <ComposerModelMenu
               effort={effort}

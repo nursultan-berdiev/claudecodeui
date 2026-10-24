@@ -651,11 +651,9 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const provider = parseProvider(req.params.provider);
     const workspacePath = readOptionalQueryString(req.query.workspacePath);
-    let skills = await providerSkillsService.listProviderSkills(provider, { workspacePath });
-    if (getAccessActor()) {
-      await companySkillsService.importDiscovered(provider, skills);
-      skills = companySkillsService.providerSkills(provider);
-    }
+    // Signed-in users get the managed library; agent skills on disk reach it only through an explicit import.
+    const skills = getAccessActor() ? companySkillsService.providerSkills(provider)
+      : await providerSkillsService.listProviderSkills(provider, { workspacePath });
     res.json(createApiSuccessResponse({ provider, skills }));
   }),
 );

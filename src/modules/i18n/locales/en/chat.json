@@ -164,6 +164,23 @@
       "title": "Replacing an earlier message",
       "filesNotReverted": "files the agent already changed are not reverted",
       "cancel": "Cancel"
+    },
+    "skills": {
+      "button": "Skills",
+      "menuLabel": "Choose a skill",
+      "search": "Find a skill",
+      "pinned": "Pinned to this chat",
+      "favorites": "Favourites",
+      "recent": "Recent",
+      "all": "All skills",
+      "empty": "No skills yet",
+      "openCatalog": "Open the catalog",
+      "pin": "Pin to this chat",
+      "unpin": "Unpin",
+      "favorite": "Add to favourites",
+      "unfavorite": "Remove from favourites",
+      "oneMessage": "for this message",
+      "remove": "Remove skill"
     }
   },
   "providerSelection": {
