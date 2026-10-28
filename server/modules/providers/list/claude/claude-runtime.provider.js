@@ -28,6 +28,7 @@ import {
   CLAUDE_PREDEFINED_MODELS,
   CLAUDE_ULTRACODE_EFFORT
 } from '@/modules/providers/list/claude/claude-models.provider.js';
+import { createClaudeLiveStream } from '@/modules/providers/list/claude/claude-live-stream.provider.js';
 import { readAgentInstructions } from '@/shared/agent-instructions.js';
 import { resolveClaudeCodeExecutablePath } from '@/shared/claude-cli-path.js';
 import {
@@ -302,6 +303,12 @@ function mapCliOptionsToSDK(options = {}) {
   };
 
   sdkOptions.settingSources = ['project', 'user', 'local'];
+
+  // Partial messages are what let the chat show a reply while it is being
+  // written; without them the SDK yields each assistant message only once it
+  // is finished. The run loop turns them into stream frames (see
+  // claude-live-stream.provider.ts) and never hands them to the normalizer.
+  sdkOptions.includePartialMessages = true;
 
   // The SDK resumes with the provider-native session id, never the app id.
   // `resumeFromScratch` is set when the very first prompt of a conversation was
@@ -918,6 +925,12 @@ async function queryClaudeSDK(command, options = {}, ws, context) {
   // Set once a turn publishes a budget read from an assistant message, so the
   // turn-ending `result` is only mined for usage when nothing better arrived.
   let assistantBudgetSent = false;
+  // Streams the run's prose token by token and pairs each streamed block with
+  // the finished assistant row that replaces it.
+  const liveStream = createClaudeLiveStream(
+    (message) => ws.send(message),
+    () => capturedSessionId || sessionId || null,
+  );
 
   // A new turn supersedes any earlier one still holding this session's process
   // open, so held runs cannot stack up across a conversation.
@@ -1130,12 +1143,23 @@ async function queryClaudeSDK(command, options = {}, ws, context) {
         // session_id already captured
       }
 
+      // Partials are only stream frames: nothing below (budget, background
+      // work, the turn's `result`) reads them.
+      if (liveStream.handlePartial(message)) {
+        if (idleReleaseTimer) {
+          // Background activity after the turn — push the countdown back out.
+          scheduleRelease();
+        }
+        continue;
+      }
+
       // Transform and normalize message via adapter
       const transformedMessage = transformMessage(message);
       const sid = capturedSessionId || sessionId || null;
 
       // Use adapter to normalize SDK events into NormalizedMessage[]
       const normalized = context.normalizeMessage(transformedMessage, sid);
+      liveStream.claimFinishedRows(message, normalized);
       for (const msg of normalized) {
         // Preserve parentToolUseId from SDK wrapper for subagent tool grouping
         if (transformedMessage.parentToolUseId && !msg.parentToolUseId) {

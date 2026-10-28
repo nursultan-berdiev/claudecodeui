@@ -1,12 +1,20 @@
 import { useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
-import type { ServerEvent,MarkSessionIdle,MarkSessionProcessing,PendingPermissionRequest,ProjectSession,LLMProvider,NormalizedMessage,GetSessionActivity,MarkSessionBackground } from '@/shared/types';
+import type { ServerEvent,MarkSessionIdle,MarkSessionProcessing,PendingPermissionRequest,ProjectSession,LLMProvider,NormalizedMessage,GetSessionActivity,MarkSessionBackground,LiveStreamBuffer } from '@/shared/types';
 import { showCompletionTitleIndicator } from '@/modules/chat/utils/pageTitleNotification';
 import { playChatCompletionSound, playNotificationSound } from '@/shared/utils';
 import type { SessionStore } from '@/modules/chat/hooks/useSessionStore';
 import { normalizedToChatMessages } from '@/modules/chat/hooks/useChatMessages';
 import { collectRunningBackgroundTasks } from '@/modules/chat/utils/backgroundTasks';
+
+/**
+ * How often a streaming reply's buffered text is published into its bubble.
+ * The server already merges deltas into frames of 40 ms
+ * (`STREAM_DELTA_COALESCE_MS`); this is the slower tick the transcript
+ * re-renders at, and `StreamingMarkdown`'s settled/pending split is tuned to it.
+ */
+const STREAM_PUBLISH_INTERVAL_MS = 100;
 
 const isActionablePermissionRequest = (request: { toolName?: unknown } | null | undefined): boolean => {
   return request?.toolName !== 'ExitPlanMode' && request?.toolName !== 'exit_plan_mode';
@@ -25,8 +33,12 @@ type UseChatRealtimeHandlersArgs = {
   setTokenBudget: (budget: Record<string, unknown> | null) => void;
   pendingPermissionRequests: PendingPermissionRequest[];
   setPendingPermissionRequests: Dispatch<SetStateAction<PendingPermissionRequest[]>>;
-  streamTimerRef: MutableRefObject<number | null>;
-  accumulatedStreamRef: MutableRefObject<string>;
+  /**
+   * Each session's reply that is still streaming, keyed by session id. One
+   * buffer per session, so two sessions streaming at once never publish each
+   * other's text.
+   */
+  streamBuffersRef: MutableRefObject<Map<string, LiveStreamBuffer>>;
   /**
    * Highest live `seq` observed per session. Essential for reconnect catch-up:
    * `chat.subscribe` sends this value as `lastSeq` so the server replays only
@@ -68,8 +80,7 @@ export function useChatRealtimeHandlers({
   setTokenBudget,
   pendingPermissionRequests,
   setPendingPermissionRequests,
-  streamTimerRef,
-  accumulatedStreamRef,
+  streamBuffersRef,
   lastSeqRef,
   statusCheckSentAtRef,
   onSessionProcessing,
@@ -105,6 +116,39 @@ export function useChatRealtimeHandlers({
     // from, so this reads the same answer they draw.
     const reportRemainingBackgroundWork = (sid: string) => {
       onSessionBackground?.(sid, collectRunningBackgroundTasks(normalizedToChatMessages(sessionStore.getMessages(sid))));
+    };
+
+    const streamBuffers = streamBuffersRef.current;
+
+    // Writes a session's buffered text into its streaming bubble.
+    const publishStream = (sid: string, buffer: LiveStreamBuffer) => {
+      if (buffer.text) {
+        sessionStore.updateStreaming(sid, buffer.text, provider, {
+          streamId: buffer.streamId,
+          timestamp: buffer.timestamp,
+        });
+      }
+    };
+
+    // Drops a session's buffer without publishing what it still holds.
+    const dropStreamBuffer = (sid: string) => {
+      const buffer = streamBuffers.get(sid);
+      if (buffer?.timer) {
+        clearTimeout(buffer.timer);
+      }
+      streamBuffers.delete(sid);
+      return buffer;
+    };
+
+    // Ends a session's open stream: its last text is published and the bubble
+    // becomes a finished reply. Without an open buffer it still finalizes a
+    // bubble left behind, as the single shared buffer used to.
+    const closeStream = (sid: string) => {
+      const buffer = dropStreamBuffer(sid);
+      if (buffer) {
+        publishStream(sid, buffer);
+      }
+      sessionStore.finalizeStreaming(sid);
     };
 
     const handleEvent = (msg: ServerEvent) => {
@@ -209,35 +253,53 @@ export function useChatRealtimeHandlers({
       // --- Streaming: buffer for performance ---
       if (msg.kind === 'stream_delta') {
         const text = (msg.content as string) || '';
-        if (!text) return;
-        accumulatedStreamRef.current += text;
-        if (!streamTimerRef.current) {
-          streamTimerRef.current = window.setTimeout(() => {
-            streamTimerRef.current = null;
-            if (sid) {
-              sessionStore.updateStreaming(sid, accumulatedStreamRef.current, provider);
-            }
-          }, 100);
+        if (!text || !sid) return;
+        const streamId = typeof msg.streamId === 'string' && msg.streamId ? msg.streamId : null;
+        let buffer = streamBuffers.get(sid);
+        // A delta naming another block means the previous one ended without
+        // a stream_end reaching us; finish its bubble so each block keeps its own.
+        if (buffer && buffer.streamId !== streamId) {
+          closeStream(sid);
+          buffer = undefined;
         }
-        // Also route to store for non-active sessions
-        if (sid && sid !== activeViewSessionId) {
-          sessionStore.appendRealtime(sid, msg as unknown as NormalizedMessage);
+        if (!buffer) {
+          buffer = {
+            text: '',
+            streamId,
+            timestamp: typeof msg.timestamp === 'string' ? msg.timestamp : new Date().toISOString(),
+            timer: null,
+          };
+          streamBuffers.set(sid, buffer);
+        }
+        buffer.text += text;
+        if (!buffer.timer) {
+          const armed = buffer;
+          armed.timer = window.setTimeout(() => {
+            armed.timer = null;
+            if (streamBuffers.get(sid) === armed) {
+              publishStream(sid, armed);
+            }
+          }, STREAM_PUBLISH_INTERVAL_MS);
         }
         return;
       }
 
       if (msg.kind === 'stream_end') {
-        if (streamTimerRef.current) {
-          clearTimeout(streamTimerRef.current);
-          streamTimerRef.current = null;
-        }
-        if (sid) {
-          if (accumulatedStreamRef.current) {
-            sessionStore.updateStreaming(sid, accumulatedStreamRef.current, provider);
+        if (!sid) return;
+        const streamId = typeof msg.streamId === 'string' && msg.streamId ? msg.streamId : null;
+        const buffer = streamBuffers.get(sid);
+        const endsOpenStream = Boolean(buffer) && (!streamId || buffer?.streamId === streamId);
+        if (msg.discard === true && streamId) {
+          // The provider abandoned this block: its bubble goes, open or finalized.
+          if (endsOpenStream) {
+            dropStreamBuffer(sid);
           }
-          sessionStore.finalizeStreaming(sid);
+          sessionStore.discardStream(sid, streamId);
+          return;
         }
-        accumulatedStreamRef.current = '';
+        if (endsOpenStream || !buffer) {
+          closeStream(sid);
+        }
         return;
       }
 
@@ -250,22 +312,39 @@ export function useChatRealtimeHandlers({
         && msg.kind !== 'permission_cancelled';
 
       if (sid && shouldPersist) {
-        sessionStore.appendRealtime(sid, msg as unknown as NormalizedMessage);
+        const replacesStreamId = typeof msg.replacesStreamId === 'string' && msg.replacesStreamId
+          ? msg.replacesStreamId
+          : null;
+        if (replacesStreamId) {
+          // The finished row for a streamed block takes the bubble's place.
+          if (streamBuffers.get(sid)?.streamId === replacesStreamId) {
+            dropStreamBuffer(sid);
+          }
+          sessionStore.replaceStream(sid, replacesStreamId, msg as unknown as NormalizedMessage);
+        } else {
+          // Any other main-thread row ends the reply streaming before it, so
+          // prose that follows a tool call starts a new bubble below the call
+          // instead of growing the one above it. Subagent rows are folded into
+          // their card and say nothing about the main thread's stream.
+          if (
+            streamBuffers.has(sid)
+            && !msg.parentToolUseId
+            && (msg.kind === 'text' || msg.kind === 'tool_use' || msg.kind === 'thinking')
+          ) {
+            closeStream(sid);
+          }
+          sessionStore.appendRealtime(sid, msg as unknown as NormalizedMessage);
+        }
       }
 
       // --- UI side effects for specific kinds ---
       switch (msg.kind) {
         case 'complete': {
-          // Flush any remaining streaming state
-          if (streamTimerRef.current) {
-            clearTimeout(streamTimerRef.current);
-            streamTimerRef.current = null;
+          // Flush any remaining streaming state — the only end Cursor's
+          // stream ever gets, and the one a run that died mid-reply gets.
+          if (sid && streamBuffers.has(sid)) {
+            closeStream(sid);
           }
-          if (sid && accumulatedStreamRef.current) {
-            sessionStore.updateStreaming(sid, accumulatedStreamRef.current, provider);
-            sessionStore.finalizeStreaming(sid);
-          }
-          accumulatedStreamRef.current = '';
 
           // `complete` is the unified terminal event — every provider run ends
           // with exactly one, regardless of success, failure, or abort. The
@@ -408,8 +487,7 @@ export function useChatRealtimeHandlers({
     setTokenBudget,
     pendingPermissionRequests,
     setPendingPermissionRequests,
-    streamTimerRef,
-    accumulatedStreamRef,
+    streamBuffersRef,
     lastSeqRef,
     statusCheckSentAtRef,
     onSessionProcessing,

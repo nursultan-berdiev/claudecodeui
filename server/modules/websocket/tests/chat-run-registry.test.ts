@@ -311,3 +311,103 @@ test('startRun rejects a second concurrent run for the same session', async () =
     assert.ok(third);
   });
 });
+
+const waitForDeltaFlush = () => new Promise((resolve) => { setTimeout(resolve, 80); });
+
+test('deltas of one streamed block ride in a single sequenced frame', async () => {
+  await withIsolatedDatabase(async () => {
+    sessionsDb.createAppSession('app-run-stream-1', 'claude', '/workspace/demo');
+    const connection = new FakeConnection();
+    const run = chatRunRegistry.startRun({
+      appSessionId: 'app-run-stream-1',
+      provider: 'claude',
+      providerSessionId: null,
+      connection,
+      userId: null,
+    });
+    assert.ok(run);
+
+    run.writer.send({ kind: 'stream_delta', provider: 'claude', sessionId: 'x', streamId: 'msg_1:0', content: 'Hel' });
+    run.writer.send({ kind: 'stream_delta', provider: 'claude', sessionId: 'x', streamId: 'msg_1:0', content: 'lo' });
+    assert.equal(connection.frames.length, 0, 'deltas are held for the merge window');
+
+    await waitForDeltaFlush();
+    assert.deepEqual(connection.frames.map((frame) => [frame.kind, frame.content, frame.seq]), [['stream_delta', 'Hello', 1]]);
+    assert.deepEqual(chatRunRegistry.replayEvents('app-run-stream-1', 0).map((event) => event.content), ['Hello']);
+  });
+});
+
+test('a held delta is sent before any frame that follows it', async () => {
+  await withIsolatedDatabase(() => {
+    sessionsDb.createAppSession('app-run-stream-2', 'claude', '/workspace/demo');
+    const connection = new FakeConnection();
+    const run = chatRunRegistry.startRun({
+      appSessionId: 'app-run-stream-2',
+      provider: 'claude',
+      providerSessionId: null,
+      connection,
+      userId: null,
+    });
+    assert.ok(run);
+
+    run.writer.send({ kind: 'stream_delta', provider: 'claude', sessionId: 'x', streamId: 'msg_1:0', content: 'a' });
+    run.writer.send({ kind: 'stream_delta', provider: 'claude', sessionId: 'x', streamId: 'msg_1:1', content: 'b' });
+    run.writer.send({ kind: 'stream_end', provider: 'claude', sessionId: 'x', streamId: 'msg_1:1' });
+    run.writer.send({ kind: 'stream_delta', provider: 'claude', sessionId: 'x', streamId: 'msg_2:0', content: 'c' });
+    chatRunRegistry.completeRun('app-run-stream-2', { exitCode: 0 });
+
+    assert.deepEqual(
+      connection.frames.map((frame) => [frame.kind, frame.streamId ?? null, frame.content ?? null, frame.seq]),
+      [
+        ['stream_delta', 'msg_1:0', 'a', 1],
+        ['stream_delta', 'msg_1:1', 'b', 2],
+        ['stream_end', 'msg_1:1', null, 3],
+        ['stream_delta', 'msg_2:0', 'c', 4],
+        ['complete', null, null, 5],
+      ],
+    );
+  });
+});
+
+test('stream frames after an aborted run are dropped', async () => {
+  await withIsolatedDatabase(async () => {
+    sessionsDb.createAppSession('app-run-stream-3', 'claude', '/workspace/demo');
+    const connection = new FakeConnection();
+    const run = chatRunRegistry.startRun({
+      appSessionId: 'app-run-stream-3',
+      provider: 'claude',
+      providerSessionId: null,
+      connection,
+      userId: null,
+    });
+    assert.ok(run);
+
+    chatRunRegistry.completeRun('app-run-stream-3', { exitCode: 1, aborted: true });
+    run.writer.send({ kind: 'stream_delta', provider: 'claude', sessionId: 'x', streamId: 'msg_1:0', content: 'late' });
+    run.writer.send({ kind: 'stream_end', provider: 'claude', sessionId: 'x', streamId: 'msg_1:0' });
+    await waitForDeltaFlush();
+
+    assert.deepEqual(connection.frames.map((frame) => frame.kind), ['complete']);
+  });
+});
+
+test('a finished turn keeps streaming the background work that follows it', async () => {
+  await withIsolatedDatabase(async () => {
+    sessionsDb.createAppSession('app-run-stream-4', 'claude', '/workspace/demo');
+    const connection = new FakeConnection();
+    const run = chatRunRegistry.startRun({
+      appSessionId: 'app-run-stream-4',
+      provider: 'claude',
+      providerSessionId: null,
+      connection,
+      userId: null,
+    });
+    assert.ok(run);
+
+    chatRunRegistry.completeRun('app-run-stream-4', { exitCode: 0 });
+    run.writer.send({ kind: 'stream_delta', provider: 'claude', sessionId: 'x', streamId: 'msg_9:0', content: 'report' });
+    await waitForDeltaFlush();
+
+    assert.deepEqual(connection.frames.map((frame) => frame.kind), ['complete', 'stream_delta']);
+  });
+});

@@ -12,6 +12,7 @@ import { api } from '@/shared/api';
 import { ESCAPE_LAYER_SELECTOR } from '@/shared/constants';
 import type {
   ChatMessage,
+  LiveStreamBuffer,
   Project,
   ProjectSession,
   SessionEstablishedContext,
@@ -85,8 +86,8 @@ function ChatInterface({
   } = useSessionProtectionActions();
 
   const sessionStore = useSessionStore();
-  const streamTimerRef = useRef<number | null>(null);
-  const accumulatedStreamRef = useRef('');
+  // Each session's reply that is still streaming, keyed by session id.
+  const streamBuffersRef = useRef(new Map<string, LiveStreamBuffer>());
   // When each session's `chat.subscribe` was last sent; idle acks older than
   // a later local request are discarded as stale.
   const statusCheckSentAtRef = useRef(new Map<string, number>());
@@ -95,12 +96,17 @@ function ChatInterface({
   // server replays only the events this client actually missed.
   const lastSeqRef = useRef(new Map<string, number>());
 
+  // Disarms every pending publish when the view moves on or unmounts. The
+  // buffers themselves stay: each belongs to its own session, so nothing can
+  // bleed into the next view, and a reply still streaming must keep its
+  // beginning — its next delta re-arms the timer, its end publishes the rest.
   const resetStreamingState = useCallback(() => {
-    if (streamTimerRef.current) {
-      clearTimeout(streamTimerRef.current);
-      streamTimerRef.current = null;
+    for (const buffer of streamBuffersRef.current.values()) {
+      if (buffer.timer) {
+        clearTimeout(buffer.timer);
+        buffer.timer = null;
+      }
     }
-    accumulatedStreamRef.current = '';
   }, []);
 
   const {
@@ -293,8 +299,7 @@ function ChatInterface({
     setTokenBudget,
     pendingPermissionRequests,
     setPendingPermissionRequests,
-    streamTimerRef,
-    accumulatedStreamRef,
+    streamBuffersRef,
     lastSeqRef,
     statusCheckSentAtRef,
     onSessionProcessing,

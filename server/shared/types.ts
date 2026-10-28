@@ -360,6 +360,24 @@ export type NormalizedMessage = {
   workflow?: WorkflowInfo;
   /** Stored memory the reply drew on, when the provider reports it. */
   memoryCitations?: MemoryCitation[];
+  /**
+   * Live streaming only. Names the text block a `stream_delta` or `stream_end`
+   * belongs to, so the client can tell one streamed bubble from the next and
+   * the writer can merge consecutive deltas of the same block into one frame.
+   */
+  streamId?: string;
+  /**
+   * Live streaming only. Set on the finished assistant `text` row that stands
+   * for an already-streamed block: the client swaps the streamed bubble for
+   * this row in place instead of appending a second copy of the reply.
+   */
+  replacesStreamId?: string;
+  /**
+   * Set on a `stream_end` whose block the provider abandoned (a retried
+   * request, an empty block): the client removes the streamed bubble instead
+   * of keeping it as a finished reply.
+   */
+  discard?: boolean;
   toolUseResult?: unknown;
   sequence?: number;
   rowid?: number;

@@ -386,6 +386,9 @@ export function normalizedToChatMessages(messages: NormalizedMessage[]): ChatMes
       // Set by the provider only on an assistant reply, and only when it knows
       // which model produced it, so every other row simply carries undefined.
       model: msg.model,
+      // A streamed reply keeps one React key from its first token through
+      // the finished row that replaces it, so its DOM is never remounted.
+      messageId: msg.streamId ? `stream-${msg.streamId}` : undefined,
     };
 
     if (appendCompactionRow(msg, converted, sharedMetadata, {
