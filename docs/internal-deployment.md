@@ -56,8 +56,9 @@ instructions tell agents to convert a copy of a legacy `.doc` or `.xls` with
 `soffice --headless --convert-to docx|xlsx` first. The conversion uses a
 throwaway profile (`-env:UserInstallation`) and `timeout -k` (soffice ignores
 SIGTERM when hung), and never touches
-the user's original file. In Plan the conversion asks for approval, because it
-is not a read-only docli command.
+the user's original file. The conversion is not on the read-only docli list,
+yet a live check on the local copy showed Claude running it in Plan without an
+approval request, so Plan does not reliably stop it.
 
 `docker/agent-instructions.md` tells every agent to use `docli word` and
 `docli excel` instead of ad-hoc scripts. The image points
