@@ -11,6 +11,17 @@ RUN HUSKY=0 npm ci --no-audit --no-fund
 COPY . .
 RUN VITE_CLOUDCLI_CONTAINER_DEPLOYMENT=true npm run build && npm prune --omit=dev --no-audit --no-fund
 
+# docli, the KeyDev Word/Excel CLI, is not published; a deployment places its wheel in docker/vendor/ before building.
+# This stage only checks for the wheel. Nothing else depends on it until the docli install below, so BuildKit runs it
+# alongside the other stages and a missing wheel stops the build at once with a clear error, while a changed wheel
+# rebuilds nothing but the docli layer. docker/vendor/ always holds a README, so the COPY never fails on its own.
+FROM node:22-bookworm-slim AS docli-wheel
+COPY docker/vendor/ /vendor/
+RUN ls /vendor/docli-*.whl > /dev/null 2>&1 || { \
+      echo "ERROR: docker/vendor/docli-<version>-py3-none-any.whl is missing." >&2; \
+      echo "docli is an internal tool and is not committed. Copy its wheel from key_dev_docs/ into docker/vendor/ and build again (see docker/vendor/README.md)." >&2; \
+      exit 1; }
+
 FROM node:22-bookworm-slim
 
 ARG SOURCE_REVISION=local
@@ -30,13 +41,14 @@ COPY --from=build /app/public ./public
 
 RUN mkdir -p /workspace /home/node/.cloudcli && chown -R node:node /workspace /home/node
 
-# docli, the KeyDev Word/Excel CLI, is not published; a deployment places its wheel in docker/vendor/ before building.
-COPY docker/vendor/docli-*.whl /tmp/docli/
-RUN python3 -m venv /opt/docli \
-    && /opt/docli/bin/pip install --no-cache-dir /tmp/docli/*.whl \
+# The wheel is bind-mounted, so it never lands in an image layer.
+RUN --mount=type=bind,from=docli-wheel,source=/vendor,target=/mnt/vendor \
+    python3 -m venv /opt/docli \
+    && /opt/docli/bin/pip install --no-cache-dir /mnt/vendor/docli-*.whl \
     && ln -s /opt/docli/bin/docli /usr/local/bin/docli \
-    && rm -rf /tmp/docli \
     && docli word --help > /dev/null && docli excel --help > /dev/null
+# LibreOffice opens files users upload; never run macros from them, whatever a profile says.
+COPY docker/libreoffice-hardening.xcd /usr/lib/libreoffice/share/registry/zz-keydev-hardening.xcd
 COPY --from=build /app/docker/agent-instructions.md ./agent-instructions.md
 
 # The CLI version is pinned by CLAUDE_CODE_VERSION; the node user cannot write the global npm prefix anyway.
