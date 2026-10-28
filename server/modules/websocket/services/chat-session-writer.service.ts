@@ -29,6 +29,17 @@ type ChatSessionWriterOptions = {
 };
 
 /**
+ * How long a `stream_delta` that names its block (`streamId`) is held so the
+ * deltas right behind it can ride in the same frame. A model emits a token
+ * every few milliseconds; one frame per token would fill the run's replay
+ * buffer within a long reply and re-render the client for nothing. 40 ms keeps
+ * the stream at about 25 frames a second, well under the client's own 100 ms
+ * publish tick (`STREAM_PUBLISH_INTERVAL_MS` in useChatRealtimeHandlers.ts),
+ * so the text does not look any chunkier for it.
+ */
+const STREAM_DELTA_COALESCE_MS = 40;
+
+/**
  * Gateway writer handed to provider runtimes instead of a raw websocket writer.
  *
  * It exposes the exact same surface as `WebSocketWriter` (`send`,
@@ -71,6 +82,13 @@ export class ChatSessionWriter {
    * anyway, but the runtime-visible value must stay provider-native.
    */
   private providerSessionId: string | null;
+  /**
+   * The `stream_delta` being held for merging, and the timer that sends it.
+   * Only deltas carrying a `streamId` are held; providers that send anonymous
+   * deltas (Cursor, OpenCode) are forwarded one frame per delta as before.
+   */
+  private pendingDelta: NormalizedMessage | null = null;
+  private pendingDeltaTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: ChatSessionWriterOptions) {
     this.options = options;
@@ -109,6 +127,13 @@ export class ChatSessionWriter {
       return;
     }
 
+    if (message.kind === 'stream_delta' && typeof message.streamId === 'string' && message.streamId) {
+      this.holdDelta(message);
+      return;
+    }
+
+    // Anything else must not overtake text that was emitted before it.
+    this.flushPendingDelta();
     const outbound = this.options.decorateOutboundEvent(message);
     if (outbound) {
       this.forward(outbound);
@@ -120,6 +145,7 @@ export class ChatSessionWriter {
    * (runtime crash before completing, or user abort).
    */
   sendComplete(opts: { exitCode: number; aborted?: boolean }): void {
+    this.flushPendingDelta();
     const message = createCompleteMessage({
       provider: this.options.provider,
       sessionId: this.providerSessionId,
@@ -156,6 +182,44 @@ export class ChatSessionWriter {
 
     this.providerSessionId = providerSessionId;
     this.options.onProviderSessionId(providerSessionId);
+  }
+
+  /**
+   * Merges a delta into the held one when both belong to the same block,
+   * otherwise sends the held one and starts holding this. The merged frame is
+   * sequenced only when it is sent, so `seq` stays gap-free and in send order.
+   */
+  private holdDelta(message: NormalizedMessage): void {
+    const pending = this.pendingDelta;
+    if (pending && pending.streamId === message.streamId && pending.parentToolUseId === message.parentToolUseId) {
+      this.pendingDelta = { ...pending, content: `${pending.content ?? ''}${message.content ?? ''}` };
+      return;
+    }
+
+    this.flushPendingDelta();
+    this.pendingDelta = message;
+    this.pendingDeltaTimer = setTimeout(() => {
+      this.flushPendingDelta();
+    }, STREAM_DELTA_COALESCE_MS);
+    // A held delta must never keep the server process alive on its own.
+    this.pendingDeltaTimer.unref?.();
+  }
+
+  private flushPendingDelta(): void {
+    if (this.pendingDeltaTimer) {
+      clearTimeout(this.pendingDeltaTimer);
+      this.pendingDeltaTimer = null;
+    }
+    const pending = this.pendingDelta;
+    if (!pending) {
+      return;
+    }
+
+    this.pendingDelta = null;
+    const outbound = this.options.decorateOutboundEvent(pending);
+    if (outbound) {
+      this.forward(outbound);
+    }
   }
 
   private forward(message: NormalizedMessage): void {

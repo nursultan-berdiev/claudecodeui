@@ -1229,11 +1229,11 @@ export class ClaudeSessionsProvider implements IProviderSessions {
       return [];
     }
 
-    if (raw.type === 'content_block_delta' && raw.delta?.text) {
-      return [createNormalizedMessage({ kind: 'stream_delta', content: raw.delta.text, sessionId, provider: PROVIDER })];
-    }
-    if (raw.type === 'content_block_stop') {
-      return [createNormalizedMessage({ kind: 'stream_end', sessionId, provider: PROVIDER })];
+    // Partial-message events are the live stream's business: the runtime turns
+    // them into stream frames itself (claude-live-stream.provider.ts), and the
+    // finished assistant row that follows each block is normalized below.
+    if (raw.type === 'stream_event') {
+      return [];
     }
 
     const messages: NormalizedMessage[] = [];

@@ -164,8 +164,10 @@ These eleven names are the whole surface `useSessionStore` returns. There is no 
 | `fetchMore(sessionId, {limit, canRequest})` | Fetches the page at `slot.offset` and prepends it via `mergeOlderServerPage`. Returns `{slot, prependedCount}`. | `loadOlderMessages` on scroll-to-top. |
 | `refreshLatestFromServer(sessionId, {limit, canRequest})` | Re-fetches the newest page and stitches it onto the cached suffix without refetching the transcript. Returns `{slot, applied, changed, deferred}`. | Only `latestRefreshExecutorRef`, i.e. everything routed through `requestLatestMessages`: `complete`, websocket reconnect, external update, stale re-activation. |
 | `appendRealtime(sessionId, msg)` | Pushes one row onto `realtimeMessages`, re-stamping `sessionId` if the frame disagreed. Trims to `MAX_REALTIME_MESSAGES`. | `useChatRealtimeHandlers`, from its catch-all branch, plus three explicit calls. See the note below the table. |
-| `updateStreaming(sessionId, accumulatedText, provider)` | Creates or rewrites the row with id `__streaming_<sessionId>` and `kind: 'stream_delta'`. | The 100 ms stream flush timer, and the final flush on `stream_end` and on `complete` when text is still buffered. |
-| `finalizeStreaming(sessionId)` | Rewrites that row to `kind: 'text'`, `role: 'assistant'` with a fresh random id. No-op if there is no placeholder. | `stream_end`, and `complete` when a buffer is still pending. |
+| `updateStreaming(sessionId, accumulatedText, provider, {streamId, timestamp})` | Creates or rewrites the row with id `__streaming_<sessionId>` and `kind: 'stream_delta'`, keeping its `streamId` and the first publish's timestamp. | The 100 ms stream flush timer, and the final flush on `stream_end` and on `complete` when text is still buffered. |
+| `finalizeStreaming(sessionId)` | Rewrites that row to `kind: 'text'`, `role: 'assistant'` with a fresh random id, keeping its `streamId`. No-op if there is no placeholder. | `stream_end`, `complete`, and any frame that closes an open stream. |
+| `replaceStream(sessionId, streamId, msg)` | Writes the finished row into the slot of the bubble with that `streamId`, keeping the bubble's timestamp; appends it when there is none. | A frame carrying `replacesStreamId`. |
+| `discardStream(sessionId, streamId)` | Removes the bubble with that `streamId`, streaming or finalized. | `stream_end` with `discard: true`. |
 | `truncateAt(sessionId, anchorId)` | Cuts `serverMessages` at the row whose `transcriptAnchorId` matches, clears `realtimeMessages` except the newest row tagged `replacesAnchorId === anchorId`, and stamps that survivor with `replacesAfterRowCount = cutIndex`. Sets `total` and `offset` to the surviving row count. | The `history_truncated` frame. |
 | `setActiveSession(sessionId \| null)` | *(no slot write)* Points `activeSessionIdRef`. Only the pointed-at session can trigger a render. | `useChatSessionState`, on session change and tab activation. |
 | `isStale(sessionId)` | *(read)* `Date.now() - fetchedAt > STALE_THRESHOLD_MS`, `true` for an unknown session. | Re-activation check. |
@@ -181,10 +183,10 @@ carries `AbortSignal.timeout(SESSION_HISTORY_REQUEST_TIMEOUT_MS)`.
 and only the last one appends. Stage one handles and returns on the control frames
 (`websocket_reconnected`, `history_truncated`, `chat_subscribed`, `session_upserted`,
 `loading_progress`) and on `protocol_error`, which appends a synthetic `error` row of its own.
-Stage two handles and returns on `stream_delta` and `stream_end`; `stream_delta` also appends
-the raw frame, but *only* for a session that is not the one being viewed, so switching to it
-later shows the partial reply. Stage three appends everything left except `complete`, `status`,
-`permission_request`, `permission_resolved` and `permission_cancelled`. Separately,
+Stage two handles and returns on `stream_delta` and `stream_end`, which only ever write
+through the session's own stream buffer. Stage three appends everything left except
+`complete`, `status`, `permission_request`, `permission_resolved` and `permission_cancelled`
+— a row carrying `replacesStreamId` goes through `replaceStream` instead. Separately,
 `useChatSessionState` appends the optimistic user echo from `addMessage` and from the
 `pendingUserMessage` flush.
 
@@ -541,9 +543,9 @@ of ~1 GB with seven thousand.
   `removeOptimisticUserEchoes` starts scanning at that index, so an earlier turn with the same
   words ("yes", "continue", the typo being corrected) cannot retire the message the user just
   sent. `truncateAt` is the only place that knows how much history survived, so it stamps it.
-- **`stream_delta` is handled twice.** For the viewed session the text is accumulated in a ref
-  and flushed through `updateStreaming` every 100 ms; for a *non-viewed* session the raw frame
-  is also `appendRealtime`d, so switching to it later shows the partial reply.
+- **`stream_delta` never reaches `appendRealtime`.** Every session, viewed or not, accumulates
+  into its own buffer and is flushed through `updateStreaming` every 100 ms, so switching to
+  a background session shows its partial reply as one bubble.
 - **A dropped realtime row is silent.** `MAX_REALTIME_MESSAGES = 500` trims from the front. On
   a very long run the earliest live rows disappear from `realtimeMessages` — they come back
   from the tail refresh that follows `complete`.

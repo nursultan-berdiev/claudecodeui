@@ -366,10 +366,22 @@ function computeMerged(server: NormalizedMessage[], realtime: NormalizedMessage[
     (newest, message) => Math.max(newest, readMessageTime(message) ?? 0),
     0,
   );
+  // Live rows keep the order they arrived in. Their clocks differ — the
+  // optimistic echo of a sent message carries the browser's, every streamed
+  // row the server's — so sorting them by their own times put a reply above
+  // the message it answers whenever the browser ran ahead of the server, until
+  // the refresh after the turn replaced both with persisted rows. Each live row
+  // therefore sorts no earlier than the live row before it.
+  const liveSortTimes = new Map<NormalizedMessage, number>();
+  let liveFloor = Number.NEGATIVE_INFINITY;
+  for (const message of extra) {
+    liveFloor = Math.max(readSortTime(message, newestServerTime), liveFloor);
+    liveSortTimes.set(message, liveFloor);
+  }
+  const sortTime = (message: NormalizedMessage) =>
+    liveSortTimes.get(message) ?? readSortTime(message, newestServerTime);
   return dedupeAdjacentAssistantEchoes(
-    [...server, ...extra].sort(
-      (a, b) => readSortTime(a, newestServerTime) - readSortTime(b, newestServerTime),
-    ),
+    [...server, ...extra].sort((a, b) => sortTime(a) - sortTime(b)),
   );
 }
 
@@ -806,19 +818,36 @@ export function useSessionStore() {
   /**
    * Update or create a streaming message (accumulated text so far).
    * Uses a well-known ID so subsequent calls replace the same message.
+   *
+   * `stream.streamId` names the provider's block and is kept on the row, so
+   * the finished row that supersedes it can find it (`replaceStream`).
+   * `stream.timestamp` is the server time of the block's first delta: the
+   * first publish fixes the bubble's place in the transcript and later ones
+   * only grow its text. Stamping the client clock on every publish used to
+   * move the bubble and change its React key ten times a second.
    */
-  const updateStreaming = useCallback((sessionId: string, accumulatedText: string, msgProvider: LLMProvider) => {
+  const updateStreaming = useCallback((
+    sessionId: string,
+    accumulatedText: string,
+    msgProvider: LLMProvider,
+    stream: { streamId?: string | null; timestamp?: string } = {},
+  ) => {
     const slot = getSlot(sessionId);
-    const streamId = `__streaming_${sessionId}`;
+    const rowId = `__streaming_${sessionId}`;
+    const idx = slot.realtimeMessages.findIndex(m => m.id === rowId);
+    const previous = idx >= 0 ? slot.realtimeMessages[idx] : null;
+    const streamId = stream.streamId || undefined;
     const msg: NormalizedMessage = {
-      id: streamId,
+      id: rowId,
       sessionId,
-      timestamp: new Date().toISOString(),
+      timestamp: (previous && previous.streamId === streamId ? previous.timestamp : null)
+        ?? stream.timestamp
+        ?? new Date().toISOString(),
       provider: msgProvider,
       kind: 'stream_delta',
       content: accumulatedText,
+      ...(streamId ? { streamId } : {}),
     };
-    const idx = slot.realtimeMessages.findIndex(m => m.id === streamId);
     if (idx >= 0) {
       slot.realtimeMessages = [...slot.realtimeMessages];
       slot.realtimeMessages[idx] = msg;
@@ -832,6 +861,8 @@ export function useSessionStore() {
   /**
    * Finalize streaming: convert the streaming message to a regular text message.
    * The well-known streaming ID is replaced with a unique text message ID.
+   * The row keeps its `streamId`, so the finished row that arrives for the
+   * same block can still take its place.
    */
   const finalizeStreaming = useCallback((sessionId: string) => {
     const slot = storeRef.current.get(sessionId);
@@ -850,6 +881,49 @@ export function useSessionStore() {
       recomputeMergedIfNeeded(slot);
       notify(sessionId);
     }
+  }, [notify]);
+
+  /**
+   * Swaps a streamed bubble, still streaming or already finalized, for the
+   * finished row the provider sent for the same block. The row takes the
+   * bubble's array slot and timestamp and keeps its `streamId`, so the reply
+   * neither moves nor remounts and a selection the user started survives.
+   * The finished row is what carries the transcript id and the model.
+   *
+   * Appends the row when no bubble names the stream: its text was never
+   * published (it finished within one publish tick), or a history refresh
+   * already reconciled the bubble away.
+   */
+  const replaceStream = useCallback((sessionId: string, streamId: string, msg: NormalizedMessage) => {
+    const slot = getSlot(sessionId);
+    const idx = slot.realtimeMessages.findIndex(m => m.streamId === streamId);
+    if (idx < 0) {
+      appendRealtime(sessionId, { ...msg, sessionId, streamId });
+      return;
+    }
+    slot.realtimeMessages = [...slot.realtimeMessages];
+    slot.realtimeMessages[idx] = {
+      ...msg,
+      sessionId,
+      streamId,
+      timestamp: slot.realtimeMessages[idx].timestamp,
+    };
+    recomputeMergedIfNeeded(slot);
+    notify(sessionId);
+  }, [appendRealtime, getSlot, notify]);
+
+  /**
+   * Removes the bubble of a block the provider abandoned (a retried request,
+   * an empty block), whether it is still streaming or already finalized.
+   */
+  const discardStream = useCallback((sessionId: string, streamId: string) => {
+    const slot = storeRef.current.get(sessionId);
+    if (!slot) return;
+    const remaining = slot.realtimeMessages.filter(m => m.streamId !== streamId);
+    if (remaining.length === slot.realtimeMessages.length) return;
+    slot.realtimeMessages = remaining;
+    recomputeMergedIfNeeded(slot);
+    notify(sessionId);
   }, [notify]);
 
   /**
@@ -876,11 +950,13 @@ export function useSessionStore() {
     isStale,
     updateStreaming,
     finalizeStreaming,
+    replaceStream,
+    discardStream,
     getMessages,
     getSessionSlot,
   }), [
     fetchFromServer, fetchMore, appendRealtime, truncateAt, refreshLatestFromServer,
-    setActiveSession, isStale, updateStreaming, finalizeStreaming,
+    setActiveSession, isStale, updateStreaming, finalizeStreaming, replaceStream, discardStream,
     getMessages, getSessionSlot,
   ]);
 }

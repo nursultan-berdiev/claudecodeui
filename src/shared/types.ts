@@ -272,6 +272,21 @@ export type ServerEvent = {
   [key: string]: unknown;
 };
 
+/**
+ * The text of one session's reply that is still streaming, held between the
+ * client's 100 ms publishes. Chat's realtime handler keeps one per session id,
+ * so replies streaming in two sessions at once never share a buffer.
+ * `streamId` names the provider's block (absent for providers that do not name
+ * them) and `timestamp` is the server time of the block's first delta, which
+ * places the bubble in the transcript and keeps its React key stable.
+ */
+export type LiveStreamBuffer = {
+  text: string;
+  streamId: string | null;
+  timestamp: string;
+  timer: number | null;
+};
+
 
 // ---------------------------
 
@@ -592,6 +607,16 @@ export type NormalizedMessage = {
   workflow?: WorkflowInfo;
   /** Stored memory this reply drew on, when the provider reports it. */
   memoryCitations?: MemoryCitation[];
+  /**
+   * Live streaming only: the text block a `stream_delta`/`stream_end` belongs
+   * to. The store keeps it on the streamed bubble, finalized or not, so the
+   * finished row that names it in `replacesStreamId` can take its place.
+   */
+  streamId?: string;
+  /** Set on a finished assistant row that supersedes an already-streamed bubble, naming that bubble's `streamId`. */
+  replacesStreamId?: string;
+  /** Set on a `stream_end` for a block the provider abandoned; its bubble is removed rather than kept. */
+  discard?: boolean;
   isFinal?: boolean;
   // Cursor-specific ordering
   sequence?: number;

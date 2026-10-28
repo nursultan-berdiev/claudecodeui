@@ -159,8 +159,8 @@ flowchart TD
   H -->|"yes"| I["Set scrollTop to scrollHeight"]
 ```
 
-That is the whole auto-follow. Note what re-runs it. A new **row** re-follows; the 100 ms
-streaming flushes that rewrite an existing row in place do not (see the gotchas). And
+That is the whole auto-follow. Note what re-runs it. A new **row** re-follows, and so does
+a 100 ms streaming flush that grows the last row in place (see the gotchas). And
 because `isUserScrolledUp` is a dependency, dropping back inside the 50 px band arms one
 more scroll that finishes the trip to the bottom.
 
@@ -214,8 +214,8 @@ sequenceDiagram
     P->>H: scroll event
     H->>H: gap is 50 px or more, set isUserScrolledUp true
     W->>S: stream_delta flush every 100 ms
-    S->>E: same row rewritten, so the row count is unchanged
-    E->>E: effect does not re-run
+    S->>E: same row rewritten and longer, so the effect runs
+    E->>E: isUserScrolledUp is true, no timer armed
     W->>S: a tool_use row arrives
     S->>E: row count changed, effect runs
     E->>E: isUserScrolledUp is true, no timer armed
@@ -495,12 +495,13 @@ a scroll event.
 
 ## Gotchas and why the code looks like this
 
-- **Streaming text does not re-follow, but the first flush does.** `updateStreaming` in
+- **Streaming text re-follows through its length, not the row count.** `updateStreaming` in
   `useSessionStore.ts` writes a row with the well-known id `__streaming_<sessionId>`. The
-  first flush appends it, so `chatMessages.length` changes once and the follow effect runs.
-  Every flush after that replaces the same array slot, so the length is unchanged and the
-  effect stays quiet. Within one streamed block the pane is held by the browser, not by this
-  code.
+  first flush appends it, so `chatMessages.length` changes once; every flush after that
+  replaces the same array slot. The follow effect therefore also depends on
+  `streamingTailLength` — the content length of the last row while it `isStreaming` — so
+  each 100 ms flush arms the same 50 ms follow, and the same `isUserScrolledUp` guard
+  leaves a reader who scrolled up alone.
 - **`stream_end` does not re-follow either.** `finalizeStreaming` rewrites the same slot in
   place, changing only the id, `kind` and `role`; both `stream_delta` and an assistant
   `text` map to exactly one row in `normalizedToChatMessages`. The length never moves, so

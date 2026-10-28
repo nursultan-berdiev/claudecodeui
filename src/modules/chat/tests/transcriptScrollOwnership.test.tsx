@@ -203,6 +203,78 @@ describe('deferred scroll-to-bottom', () => {
   });
 });
 
+describe('following a streaming reply', () => {
+  const streamingRow = (content: string): NormalizedMessage => ({
+    id: `__streaming_${SESSION_A}`,
+    kind: 'stream_delta',
+    provider: 'claude',
+    sessionId: SESSION_A,
+    content,
+    timestamp: '2026-01-01T00:00:01.000Z',
+  } as NormalizedMessage);
+
+  it('keeps the newest words in view as the bubble grows in place', async () => {
+    const messages = new Map<string, NormalizedMessage[]>([
+      [SESSION_A, [buildMessage(0, '2026-01-01T00:00:00.000Z'), streamingRow('The first words')]],
+    ]);
+    const store = createStore(messages);
+    const { result, rerender } = await renderChatSessionState({
+      session: { id: SESSION_A } as ProjectSession,
+      store,
+    });
+
+    const container = createContainer(5000, 500);
+    (result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container.element;
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    container.writes.length = 0;
+
+    // The same row, longer: the row count does not change.
+    messages.set(SESSION_A, [buildMessage(0, '2026-01-01T00:00:00.000Z'), streamingRow('The first words and the next ones')]);
+    act(() => {
+      rerender({ session: { id: SESSION_A } as ProjectSession });
+    });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(container.writes).toContain(container.scrollHeight);
+  });
+
+  it('leaves the view alone when the user has scrolled up to read', async () => {
+    const messages = new Map<string, NormalizedMessage[]>([
+      [SESSION_A, [buildMessage(0, '2026-01-01T00:00:00.000Z'), streamingRow('The first words')]],
+    ]);
+    const store = createStore(messages);
+    const { result, rerender } = await renderChatSessionState({
+      session: { id: SESSION_A } as ProjectSession,
+      store,
+    });
+
+    const container = createContainer(5000, 500);
+    (result.current.scrollContainerRef as { current: HTMLDivElement | null }).current = container.element;
+    act(() => {
+      vi.advanceTimersByTime(200);
+      result.current.setIsUserScrolledUp(true);
+    });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    container.writes.length = 0;
+
+    messages.set(SESSION_A, [buildMessage(0, '2026-01-01T00:00:00.000Z'), streamingRow('The first words and the next ones')]);
+    act(() => {
+      rerender({ session: { id: SESSION_A } as ProjectSession });
+    });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    assert.deepEqual(container.writes, []);
+  });
+});
+
 describe('search jump ownership', () => {
   it('does not follow the user into the next session', { timeout: 20_000 }, async () => {
     const messages = new Map<string, NormalizedMessage[]>([

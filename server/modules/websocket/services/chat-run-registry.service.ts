@@ -33,6 +33,8 @@ type ChatRun = {
   writer: ChatSessionWriter;
   startedAt: number;
   completedAt: number | null;
+  /** Set when the terminal `complete` was an abort; the killed runtime's leftover stream is dropped. */
+  aborted: boolean;
 };
 
 /**
@@ -108,6 +110,12 @@ function decorateAndRecordEvent(run: ChatRun, message: NormalizedMessage): Norma
   if (message.kind === 'complete' && run.status === 'completed') {
     return null;
   }
+  // An interrupted runtime can flush a few more tokens before it dies. After
+  // the abort's `complete` nothing would ever close the bubble they open, so
+  // the client would show a reply streaming forever.
+  if ((message.kind === 'stream_delta' || message.kind === 'stream_end') && run.aborted) {
+    return null;
+  }
 
   run.lastSeq += 1;
 
@@ -123,6 +131,7 @@ function decorateAndRecordEvent(run: ChatRun, message: NormalizedMessage): Norma
     outbound.actualSessionId = run.appSessionId;
     run.status = 'completed';
     run.completedAt = Date.now();
+    run.aborted = Boolean(message.aborted);
     evictRunLater(run);
   }
 
@@ -216,6 +225,7 @@ export const chatRunRegistry = {
       writer: null as unknown as ChatSessionWriter,
       startedAt: Date.now(),
       completedAt: null,
+      aborted: false,
     };
 
     run.writer = new ChatSessionWriter({

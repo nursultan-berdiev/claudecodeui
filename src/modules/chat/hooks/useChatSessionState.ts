@@ -1004,6 +1004,14 @@ export function useChatSessionState({
     scrollPositionRef.current = { height: container.scrollHeight, top: container.scrollTop };
   });
 
+  // A reply streaming into its bubble grows the last row in place, which the
+  // row count never sees. Its length is what keeps the newest words in view
+  // while the user stays at the bottom, the way a new row does.
+  const lastChatMessage = chatMessages[chatMessages.length - 1];
+  const streamingTailLength = lastChatMessage?.isStreaming && typeof lastChatMessage.content === 'string'
+    ? lastChatMessage.content.length
+    : 0;
+
   useEffect(() => {
     if (!isActive) return;
     if (!scrollContainerRef.current || chatMessages.length === 0) return;
@@ -1017,7 +1025,7 @@ export function useChatSessionState({
         }
       }, 50);
     }
-  }, [chatMessages.length, isActive, isLoadingMoreMessages, isUserScrolledUp, scrollToBottom]);
+  }, [chatMessages.length, streamingTailLength, isActive, isLoadingMoreMessages, isUserScrolledUp, scrollToBottom]);
 
   useEffect(() => {
     const container = scrollContainerRef.current;

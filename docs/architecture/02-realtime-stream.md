@@ -15,11 +15,13 @@ replay, and fans it out to every socket watching that run. On the client there i
 one listener for all of it: `useChatRealtimeHandlers` switches on `kind` and, for almost
 every kind, appends the frame to the viewed session's slot in `useSessionStore`. The one
 exception is `stream_delta`. Deltas do not reach the store directly; they pile up in a
-ref and a 100 ms timer publishes the whole accumulated string into a single synthetic row
-with a well-known id, so a reply that streams for thirty seconds is one row whose content
-grows rather than a thousand rows. Everything a newcomer finds confusing here comes from
-that one exception and from the fact that **only two of the four providers ever send a
-`stream_delta` at all.**
+per-session buffer and a 100 ms timer publishes the whole accumulated string into a single
+synthetic row with a well-known id, so a reply that streams for thirty seconds is one row
+whose content grows rather than a thousand rows. Claude names each streamed block with a
+`streamId`, and the finished assistant row that follows carries `replacesStreamId`: the
+client swaps the bubble for that row in place. Everything a newcomer finds confusing here
+comes from that exception and from the fact that **providers stream differently** — Claude
+names its blocks, Cursor and OpenCode send anonymous deltas, and Codex sends none yet.
 
 ## Mental model
 
@@ -42,10 +44,12 @@ it.
    row count stays flat while the text grows. `finalizeStreaming` rewrites that same array
    slot — new id, `kind: 'text'`, `role: 'assistant'` — so React reconciles instead of
    remounting.
-4. **Whether you see deltas at all depends on the provider.** Cursor and OpenCode stream;
-   Claude and Codex do not. Claude's live prose arrives as complete `text` rows, one per
-   assistant message. Code that assumes "assistant reply implies `stream_delta`" is wrong
-   for half the providers, and the half it is wrong for is the default one.
+4. **Whether you see deltas at all depends on the provider.** Claude, Cursor and OpenCode
+   stream; Codex does not yet, its live prose arrives as one complete `text` row per
+   message. Claude also sends the finished row after each streamed block, tagged with the
+   block it replaces. Code that assumes "assistant reply implies `stream_delta`", or that
+   "a `stream_delta` is never followed by a `text` of the same reply", is wrong for one of
+   them.
 5. **`complete` is the only terminal event. `error` is just a row.** Providers emit
    `error` for mid-run stderr and keep running. Clearing the busy state on `error` leaves
    a live run writing into a UI that believes it is idle.
@@ -58,10 +62,10 @@ it.
    from them. `complete` triggers a REST refresh of the persisted tail; the live copy of
    the reply survives until the persisted copy demonstrably supersedes it. Details in
    [the message store](./04-message-store-and-lazy-loading.md).
-8. **The delta buffer belongs to the chat pane, not to a session.** There is one
-   `accumulatedStreamRef` and one `streamTimerRef` for the whole `ChatInterface`. Two
-   sessions streaming at once share them. This is a real limitation, not a subtlety —
-   see [Cross-session behaviour](#cross-session-behaviour).
+8. **The delta buffer belongs to a session.** `streamBuffersRef` on `ChatInterface` maps
+   each session id to its own `LiveStreamBuffer` (text, `streamId`, first-delta timestamp,
+   timer). Two sessions streaming at once never touch each other's text — see
+   [Cross-session behaviour](#cross-session-behaviour).
 
 ## The pieces
 
@@ -69,8 +73,8 @@ it.
 | --- | --- |
 | `src/shared/context/WebSocketContext.tsx` | The one socket. Parses each frame and calls every registered listener synchronously. Synthesises the client-only `websocket_reconnected` frame on a re-open, and retries a dropped socket after 3 s. |
 | `src/modules/chat/hooks/useChatRealtimeHandlers.ts` | The whole client-side protocol. One switch on `kind`; the streaming buffer; the `seq` bookkeeping. |
-| `src/modules/chat/ChatInterface.tsx` | Owns the four refs the handler mutates — `accumulatedStreamRef`, `streamTimerRef`, `lastSeqRef`, `statusCheckSentAtRef` — and clears the first two on unmount. |
-| `src/modules/chat/hooks/useSessionStore.ts` | Per-session slots. `appendRealtime`, `updateStreaming`, `finalizeStreaming`, `truncateAt`, and the merge of live and persisted rows. |
+| `src/modules/chat/ChatInterface.tsx` | Owns the three refs the handler mutates — `streamBuffersRef`, `lastSeqRef`, `statusCheckSentAtRef` — and disarms the stream buffers' timers on unmount. |
+| `src/modules/chat/hooks/useSessionStore.ts` | Per-session slots. `appendRealtime`, `updateStreaming`, `finalizeStreaming`, `replaceStream`, `discardStream`, `truncateAt`, and the merge of live and persisted rows. |
 | `src/modules/chat/hooks/useChatMessages.ts` | `normalizedToChatMessages` — the projection from store records to UI objects. Pairs `tool_use` with `tool_result`, folds subagent rows into their container, and memoises through a `WeakMap`. |
 | `src/modules/chat/hooks/useChatSessionState.ts` | Sends `chat.subscribe` on session open and on reconnect, owns `requestLatestMessages` and `resetStreamingState`, and memoises `chatMessages`. |
 | `src/modules/chat/hooks/useChatComposerState.ts` | The outbound side: `chat.send`, `chat.edit-send`, `chat.abort`, `chat.permission-response`, plus the optimistic user echo. |
@@ -80,7 +84,8 @@ it.
 | `src/shared/types.ts` | `ServerEvent` at `:204`, the client's view of a frame. Every field the handler reads is optional here. |
 | `server/modules/websocket/services/chat-websocket.service.ts` | Handles `chat.send`, `chat.edit-send`, `chat.abort`, `chat.subscribe`, `chat.permission-response`. Registers the run, then hands the turn to the provider runtime. |
 | `server/modules/websocket/services/chat-run-registry.service.ts` | One entry per app session. `decorateAndRecordEvent` at `:84` is the choke point: session-id rewrite, `seq` assignment, replay buffering, terminal-`complete` de-duplication. |
-| `server/modules/websocket/services/chat-session-writer.service.ts` | The object provider runtimes think is their socket. Swallows `session_created`; `forward` at `:160` fans out to every watching connection and collects dead ones. |
+| `server/modules/websocket/services/chat-session-writer.service.ts` | The object provider runtimes think is their socket. Swallows `session_created`; merges consecutive `stream_delta`s of one `streamId` for 40 ms into one frame; `forward` fans out to every watching connection and collects dead ones. |
+| `server/modules/providers/list/claude/claude-live-stream.provider.ts` | Turns the SDK's partial messages (`stream_event`) into `stream_delta`/`stream_end` and tags each finished assistant row with the block it replaces. |
 | `server/shared/utils.ts` | `createNormalizedMessage` at `:348` and `createCompleteMessage` — the envelope every provider event is built with. **Not** `message-unification.ts`; that file exports only `prepareTranscriptMessages`, which runs on REST history reads and never on the live path. |
 | `server/shared/types.ts` | `MessageKind` at `:178` — the fifteen kinds a provider can emit. `GatewayEventKind` at `:204` — the four the gateway adds. |
 | `server/modules/providers/list/*/` | Per provider, a `*-runtime.provider.js` that drives the CLI or SDK and a `*-sessions.provider.ts` whose `normalizeMessage` converts one raw event into `NormalizedMessage[]`. |
@@ -108,7 +113,7 @@ sequenceDiagram
     GW->>CLI: runtime.run with the app session id
     CLI-->>REG: session_created announcing the provider-native id
     Note over REG: swallowed and recorded, never forwarded
-    CLI-->>REG: text rows for Claude and Codex, stream_delta for Cursor and OpenCode
+    CLI-->>REG: stream_delta for Claude, Cursor and OpenCode, text rows for Codex
     REG-->>WSC: sessionId rewritten to the app id, seq stamped, buffered
     WSC-->>UI: dispatched to every listener
     CLI-->>REG: tool_use carrying a toolId
@@ -147,9 +152,9 @@ reload can make the transcript look completely different from what streamed.
 
 | Kind | Claude | Codex | Cursor | OpenCode |
 | --- | --- | --- | --- | --- |
-| `text` | yes, whole assistant messages | yes | history only | history only |
-| `stream_delta` | **no** | **no** | yes, one per assistant chunk | yes, from `text` parts |
-| `stream_end` | **no** | **no** | **never** | yes, from `step_finish` |
+| `text` | yes, whole assistant messages, `replacesStreamId` when streamed | yes | history only | history only |
+| `stream_delta` | yes, with `streamId`, merged into ~25 frames a second | **no** | yes, one per assistant chunk | yes, from `text` parts |
+| `stream_end` | yes, per text block; `discard` for an abandoned one | **no** | **never** | yes, from `step_finish` |
 | `thinking` | yes | yes | history only | yes, from `reasoning` parts |
 | `tool_use` | yes | yes | history only | yes |
 | `tool_result` | yes, a separate frame | yes, a separate frame | history only | **never** — attached to the `tool_use` frame instead |
@@ -160,14 +165,20 @@ reload can make the transcript look completely different from what streamed.
 
 Two entries deserve the emphasis:
 
-**Claude does not stream deltas today.** `claude-sessions.provider.ts:684` does contain a
-branch that turns `content_block_delta` into a `stream_delta`, which is why the opposite
-is widely believed. That branch is unreachable: `mapCliOptionsToSDK` in
-`claude-runtime.provider.js` builds its options object from scratch and never sets
-`includePartialMessages`, which the SDK defaults to false — and even with it enabled the
-SDK wraps partial events as `{ type: 'stream_event', event: … }`, a shape the branch does
-not match. What arrives live is one complete `text` row per assistant message, so a long
-Claude reply appears in whole paragraphs, not character by character.
+**Claude streams through partial messages.** `mapCliOptionsToSDK` sets
+`includePartialMessages`, so the SDK yields the raw API stream as `stream_event` wrappers
+before each finished `assistant` message. The run loop hands them to
+`claude-live-stream.provider.ts` and never to the normalizer, which returns `[]` for them
+(history never contains them). Only the main thread's `text_delta`s stream: subagent
+partials (`parent_tool_use_id` set), thinking and tool-input deltas are dropped. Each text
+block gets `streamId = <API message id>:<block index>`. The CLI yields a block's finished
+`assistant` message *before* that block's `content_block_stop`, so the finished row usually
+claims the block while it is still open: the runtime sends `stream_end` right then, ahead of
+the row, which carries `replacesStreamId`, and the late stop finds nothing open. A block
+that stops first waits in an unclaimed list and is claimed in order by the next finished row
+for the same API message. A block still unclaimed when another message starts or finishes
+belonged to an attempt the CLI retried or re-sent without streaming, and gets
+`stream_end` with `discard: true`.
 
 **Cursor emits `stream_delta` and never `stream_end`.** There is no `stream_end` anywhere
 under `list/cursor/`. On Cursor the streaming placeholder is only ever finalised by the
@@ -194,8 +205,8 @@ flowchart TD
     PE["protocol_error. Clear busy and append an error row"]
     IG["session_upserted and loading_progress. Owned by useProjectsState"]
     S{"Is it a streaming kind"}
-    SD["stream_delta. Append to the ref and arm the 100 ms timer"]
-    SE["stream_end. Flush the ref then finalizeStreaming"]
+    SD["stream_delta. Append to the session's buffer and arm the 100 ms timer"]
+    SE["stream_end. Flush the buffer then finalizeStreaming, or discardStream"]
     P{"Is it a control kind"}
     CTRL["complete, status, permission_request, permission_resolved, permission_cancelled"]
     ST["Never stored. Side effects only"]
@@ -236,7 +247,8 @@ emitted in buffer order.
 A provider that streams emits deltas far faster than a transcript can usefully re-render.
 The handler's answer is a leading-edge-armed, trailing-edge-fired timer:
 
-- The **first** delta appends to `accumulatedStreamRef` and arms a 100 ms `setTimeout`.
+- The **first** delta creates the session's buffer, recording its `streamId` and the frame's
+  server timestamp, and arms a 100 ms `setTimeout`.
 - Every delta inside that window only appends to the ref. The timer is not re-armed and
   not extended.
 - When it fires, it clears itself and calls `updateStreaming(sid, wholeAccumulatedText)`.
@@ -248,9 +260,17 @@ make sense: the row is idempotent, so a missed flush costs nothing, and
 `finalizeStreaming` has nothing to concatenate.
 
 Two flushes are defensive rather than routine. `stream_end` clears the timer, flushes if
-the ref is non-empty, finalises and resets the ref. The `complete` branch does the same
-thing again, which is what carries Cursor — where `stream_end` never arrives — and any
-provider whose run dies mid-reply.
+the buffer is non-empty, finalises and drops the buffer. The `complete` branch does the
+same thing again, which is what carries Cursor — where `stream_end` never arrives — and
+any provider whose run dies mid-reply. A delta with a different `streamId`, or a
+main-thread `text`, `tool_use` or `thinking` row without `replacesStreamId`, also closes the
+open bubble first, so prose after a tool call starts a new bubble below the call.
+
+The bubble keeps the first delta's timestamp, so it neither moves in the merged order nor
+changes its React key between flushes; `normalizedToChatMessages` keys every row that has a
+`streamId` as `stream-<streamId>`. When the finished row with `replacesStreamId` arrives,
+`replaceStream` writes it into the bubble's slot with the bubble's timestamp — the same
+key, the same DOM, now carrying the transcript id and the model.
 
 ```mermaid
 stateDiagram-v2
@@ -266,8 +286,8 @@ stateDiagram-v2
 
 `Finalized` and `Reconciled` are different rows in the same array position at different
 times. Finalising swaps the synthetic `__streaming_` id for a unique
-`text_<timestamp>_<random>` one and flips `kind` to `text`; the persisted reply that
-arrives moments later has yet another id. The store collapses the pair —
+`text_<timestamp>_<random>` one and flips `kind` to `text`; for Claude the finished row then
+replaces it, and the persisted reply that arrives moments later has that row's id. The store collapses the pair —
 `pruneRealtimeSupersededByServer` drops the live row when the same assistant text is
 already in the persisted turn, and `dedupeAdjacentAssistantEchoes` catches whatever slips
 past into `merged`. Without both, every completed reply would briefly appear twice.
@@ -398,24 +418,12 @@ kinds are among the five that are never persisted as rows. The rules:
 
 ## Cross-session behaviour
 
-The store is session-keyed and correct for any number of sessions. The streaming buffer is
-not, and this is the sharpest edge in the subsystem.
-
-`accumulatedStreamRef` and `streamTimerRef` are single refs on `ChatInterface`. When a
-delta arrives:
-
-- It is appended to that one ref, **whatever session it belongs to.**
-- The timer, if not already armed, is armed with a closure over *that* frame's session id.
-  The flush writes the ref's entire contents to *that* session.
-- Additionally, if the frame's session is **not** the one on screen, the raw delta is
-  appended to that session's slot as its own row.
-
-So two sessions streaming at once share one buffer, and the background session's prose can
-be published into the foreground session's placeholder. Nothing repairs this except a
-session switch, which calls `resetStreamingState` and clears both refs. The background
-session, meanwhile, accumulates one store row per delta rather than one coalesced row;
-those rows only disappear on a server refresh whose persisted assistant text matches them
-exactly, and they count against the 500-row realtime cap.
+The store is session-keyed and correct for any number of sessions, and so is the streaming
+buffer: each session id has its own `LiveStreamBuffer`, armed with its own timer, publishing
+into its own slot whether or not the session is on screen. Switching away from a session
+that is still streaming disarms the timers (`resetStreamingState`) but keeps the buffers, so
+the reply keeps its beginning; its next delta re-arms the timer and its `stream_end` or
+`complete` publishes the rest.
 
 Everything else is per-session and behaves: `lastSeqRef` and `statusCheckSentAtRef` are
 `Map`s keyed by session id, the busy map is keyed by session id, the token counter is
@@ -474,8 +482,10 @@ question rendered twice in another.
 - **Never split streaming markdown inside a fence, list, table, blockquote or math
   block.** Extend `CONTEXT_SENSITIVE_LINE`; do not relax it. The equivalence property is
   the only thing making the two-half render legal.
-- **`stream_end` from a background session is close to a no-op.** `finalizeStreaming`
-  looks for `__streaming_<sid>` in that session's slot, and nothing put one there.
+- **A Claude reply is streamed and then sent again whole.** The finished row is the one
+  that carries the transcript id and the model, so it replaces the bubble rather than being
+  dropped as a duplicate. A `text` row without `replacesStreamId` is a reply that never
+  streamed, and is appended as before.
 - **Frames without `kind` are dropped before anything else happens.** If events are
   clearly arriving and nothing renders, check that first.
 
@@ -484,14 +494,15 @@ question rendered twice in another.
 | If you touch | Also check |
 | --- | --- |
 | The 100 ms flush interval or the timer arming | `StreamingMarkdown`'s whole reason for existing is that interval. Slower means fewer re-parses but visibly chunkier text; faster means the split has to earn more. |
-| `updateStreaming` or the `__streaming_` id | `pruneRealtimeSupersededByServer` matches that id by name, and `dedupeAdjacentAssistantEchoes` special-cases a `stream_delta` row followed by an identical assistant `text` row. |
+| `updateStreaming` or the `__streaming_` id | `pruneRealtimeSupersededByServer` matches that id by name, `replaceStream` and `discardStream` find a bubble by its `streamId`, and `dedupeAdjacentAssistantEchoes` special-cases a `stream_delta` row followed by an identical assistant `text` row. |
 | `finalizeStreaming` | It must keep the array position and must not append. `messageStreamEnd.test.tsx` covers the DOM-identity half; the duplicate-bubble half is covered by the store's dedupe. |
 | The `shouldPersist` filter | Adding a kind to it makes that kind renderable, which means `normalizedToChatMessages` needs a case for it or it silently disappears. |
 | Anything in `splitStreamingMarkdown` | `streamingMarkdown.test.ts` for the boundary rules and `streamingMarkdownRenderEquivalence.test.tsx` for split-equals-unsplit on every prefix. Both must pass on the fenced and list fixtures. |
 | A provider's `normalizeMessage` | The kind table above. Adding `stream_delta` to a provider that had none makes the shared buffer and the missing `stream_end` suddenly matter for it. |
 | `decorateAndRecordEvent` or `seq` assignment | Reconnect replay is `seq > lastSeq` with no gap detection, and `lastSeqRef` only moves forward. Any non-monotonic `seq` silently loses events. |
 | The `status` branch | Both arms. The `token_budget` arm is scoped to the viewed session on purpose, and the other arm currently has no producer — a new producer will start writing status text into the activity map for the first time. |
-| Session-switch cleanup in `useChatSessionState` | `resetStreamingState` is the only thing that unwinds a shared buffer mid-stream. Removing that call re-introduces cross-session text bleed. |
+| Session-switch cleanup in `useChatSessionState` | `resetStreamingState` only disarms timers. Clearing the buffers there would cut the beginning off a reply that keeps streaming after the switch. |
+| `STREAM_DELTA_COALESCE_MS` or the writer's held delta | The held delta must be sent before any other frame and in `sendComplete`, or text overtakes the `stream_end`/`complete` that should follow it. |
 
 Related: [the websocket layer](./01-websocket-transport.md) for the transport and the replay
 contract, [the message store](./04-message-store-and-lazy-loading.md) for what happens to
