@@ -13,6 +13,15 @@ RUN VITE_CLOUDCLI_CONTAINER_DEPLOYMENT=true npm run build && npm prune --omit=de
 
 FROM node:22-bookworm-slim
 
+# docli, the KeyDev Word/Excel CLI, is not published; a deployment places its wheel in docker/vendor/ before building.
+# docker/vendor/ always holds a README, so this COPY never fails on its own; the check turns a missing wheel into a clear
+# error before the slow steps (apt, npm) instead of an unexplained COPY failure.
+COPY docker/vendor/ /tmp/docli/
+RUN ls /tmp/docli/docli-*.whl > /dev/null 2>&1 || { \
+      echo "ERROR: docker/vendor/docli-<version>-py3-none-any.whl is missing." >&2; \
+      echo "docli is an internal tool and is not committed. Copy its wheel from key_dev_docs/ into docker/vendor/ and build again (see docker/vendor/README.md)." >&2; \
+      exit 1; }
+
 ARG SOURCE_REVISION=local
 LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 ARG CLAUDE_CODE_VERSION=2.1.288
@@ -30,8 +39,6 @@ COPY --from=build /app/public ./public
 
 RUN mkdir -p /workspace /home/node/.cloudcli && chown -R node:node /workspace /home/node
 
-# docli, the KeyDev Word/Excel CLI, is not published; a deployment places its wheel in docker/vendor/ before building.
-COPY docker/vendor/docli-*.whl /tmp/docli/
 RUN python3 -m venv /opt/docli \
     && /opt/docli/bin/pip install --no-cache-dir /tmp/docli/*.whl \
     && ln -s /opt/docli/bin/docli /usr/local/bin/docli \
