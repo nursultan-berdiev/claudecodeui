@@ -21,7 +21,8 @@ whose content grows rather than a thousand rows. Claude names each streamed bloc
 `streamId`, and the finished assistant row that follows carries `replacesStreamId`: the
 client swaps the bubble for that row in place. Everything a newcomer finds confusing here
 comes from that exception and from the fact that **providers stream differently** — Claude
-names its blocks, Cursor and OpenCode send anonymous deltas, and Codex sends none yet.
+and Codex (over the app-server transport) name their blocks, Cursor and OpenCode send
+anonymous deltas, and Codex over `codex exec` sends none.
 
 ## Mental model
 
@@ -45,9 +46,10 @@ it.
    slot — new id, `kind: 'text'`, `role: 'assistant'` — so React reconciles instead of
    remounting.
 4. **Whether you see deltas at all depends on the provider.** Claude, Cursor and OpenCode
-   stream; Codex does not yet, its live prose arrives as one complete `text` row per
-   message. Claude also sends the finished row after each streamed block, tagged with the
-   block it replaces. Code that assumes "assistant reply implies `stream_delta`", or that
+   stream; Codex streams only over the app-server transport (`CLOUDCLI_CODEX_TRANSPORT=app-server`)
+   — over `codex exec`, the default, its live prose arrives as one complete `text` row per
+   message. Claude and Codex also send the finished row after each streamed block, tagged
+   with the block it replaces. Code that assumes "assistant reply implies `stream_delta`", or that
    "a `stream_delta` is never followed by a `text` of the same reply", is wrong for one of
    them.
 5. **`complete` is the only terminal event. `error` is just a row.** Providers emit
@@ -113,7 +115,7 @@ sequenceDiagram
     GW->>CLI: runtime.run with the app session id
     CLI-->>REG: session_created announcing the provider-native id
     Note over REG: swallowed and recorded, never forwarded
-    CLI-->>REG: stream_delta for Claude, Cursor and OpenCode, text rows for Codex
+    CLI-->>REG: stream_delta for Claude, Cursor, OpenCode and Codex over app-server, text rows for Codex over exec
     REG-->>WSC: sessionId rewritten to the app id, seq stamped, buffered
     WSC-->>UI: dispatched to every listener
     CLI-->>REG: tool_use carrying a toolId
@@ -152,9 +154,9 @@ reload can make the transcript look completely different from what streamed.
 
 | Kind | Claude | Codex | Cursor | OpenCode |
 | --- | --- | --- | --- | --- |
-| `text` | yes, whole assistant messages, `replacesStreamId` when streamed | yes | history only | history only |
-| `stream_delta` | yes, with `streamId`, merged into ~25 frames a second | **no** | yes, one per assistant chunk | yes, from `text` parts |
-| `stream_end` | yes, per text block; `discard` for an abandoned one | **no** | **never** | yes, from `step_finish` |
+| `text` | yes, whole assistant messages, `replacesStreamId` when streamed | yes, `replacesStreamId` over app-server | history only | history only |
+| `stream_delta` | yes, with `streamId`, merged into ~25 frames a second | over app-server only, `streamId` is the item id | yes, one per assistant chunk | yes, from `text` parts |
+| `stream_end` | yes, per text block; `discard` for an abandoned one | over app-server only, on the message's `item/completed` | **never** | yes, from `step_finish` |
 | `thinking` | yes | yes | history only | yes, from `reasoning` parts |
 | `tool_use` | yes | yes | history only | yes |
 | `tool_result` | yes, a separate frame | yes, a separate frame | history only | **never** — attached to the `tool_use` frame instead |
@@ -179,6 +181,19 @@ that stops first waits in an unclaimed list and is claimed in order by the next 
 for the same API message. A block still unclaimed when another message starts or finishes
 belonged to an attempt the CLI retried or re-sent without streaming, and gets
 `stream_end` with `discard: true`.
+
+**Codex streams over its app-server.** `codex exec`, which the SDK wraps, reports a reply
+only as a finished `agent_message`; the CLI's JSON-RPC server also sends
+`item/agentMessage/delta`. With `CLOUDCLI_CODEX_TRANSPORT=app-server` a turn runs over one
+`codex app-server` process (`codex-app-server-turn.provider.ts`): `thread/start` or
+`thread/resume` with the run's sandbox, approval policy, model and effort, then `turn/start`.
+`codex-app-server-events.provider.ts` translates the notifications back into exec's events,
+so the normalizer and history are untouched, plus `agent_message.delta`, which the runtime
+sends as `stream_delta` named by the item id. The message's `item/completed` sends
+`stream_end` and its row with `replacesStreamId`; a message that normalizes to no prose row
+ends with `discard`. Every request the server makes (approvals, user input) is declined,
+as exec cannot answer them either. A server that fails to start falls back to exec for that
+turn.
 
 **Cursor emits `stream_delta` and never `stream_end`.** There is no `stream_end` anywhere
 under `list/cursor/`. On Cursor the streaming placeholder is only ever finalised by the

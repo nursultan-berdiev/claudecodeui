@@ -3,6 +3,7 @@ import { stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import readline from 'node:readline';
 
+import type { CodexAppServerConnection, CodexAppServerHandlers } from '@/shared/types.js';
 import { AppError } from '@/shared/utils.js';
 
 /**
@@ -16,13 +17,20 @@ import { AppError } from '@/shared/utils.js';
  * primitive, `thread/fork`, which is what the Codex IDE clients build their
  * own "fork" and "edit an earlier message" on top of.
  *
- * So this is a second transport to the same CLI, opened only for the
- * operations the SDK cannot express. Everything else still goes through the
- * SDK.
+ * So this is a second transport to the same CLI. Forks always go through it;
+ * chat turns do when `CLOUDCLI_CODEX_TRANSPORT=app-server`, because only the
+ * app-server streams the reply as it is written (`item/agentMessage/delta`) —
+ * `codex exec` reports each message once it is finished.
  */
 
 /** How long a single request may take before the child is killed. */
 const REQUEST_TIMEOUT_MS = 30_000;
+
+/** How long `close` waits after SIGTERM before it stops asking nicely. */
+const CLOSE_GRACE_MS = 3_000;
+
+/** JSON-RPC "method not found", sent for a server request nobody handles. */
+const METHOD_NOT_FOUND = -32601;
 
 type JsonRpcResponse = {
   id?: number;
@@ -54,7 +62,7 @@ function resolveCodexLauncher(): string {
   try {
     return require_.resolve('@openai/codex/bin/codex.js');
   } catch {
-    throw new AppError('The Codex CLI package is not installed, so Codex conversations cannot be branched.', {
+    throw new AppError('The Codex CLI package is not installed, so the Codex app-server cannot start.', {
       code: 'CODEX_APP_SERVER_UNAVAILABLE',
       statusCode: 501,
     });
@@ -62,17 +70,17 @@ function resolveCodexLauncher(): string {
 }
 
 /**
- * Runs one exchange against a freshly spawned `codex app-server`.
+ * Used by the Codex runtime (`codex-runtime.provider.ts`) to run a chat turn
+ * over the app-server, and by `forkThread` below: spawns `codex app-server`,
+ * performs the `initialize` handshake and returns the live connection.
  *
- * A process per operation rather than a pooled long-lived one: the handshake
- * costs a fraction of a second, forking happens at most once per user action,
- * and a shared child would need lifecycle handling — restarts, back-pressure,
- * a crash taking every pending fork with it — for no measurable gain next to
- * the model turn that follows.
+ * Every stdout line is routed by shape, because the server's own requests
+ * carry numeric ids too: `method` with `id` is a server request (answered
+ * through `onServerRequest`), `method` alone is a notification, `id` alone is
+ * a reply to one of ours. Treating every numeric id as a reply would resolve
+ * the wrong pending call the first time the server asked for an approval.
  */
-async function withAppServer<T>(
-  run: (call: (method: string, params: unknown) => Promise<unknown>) => Promise<T>,
-): Promise<T> {
+export async function openCodexAppServer(handlers: CodexAppServerHandlers): Promise<CodexAppServerConnection> {
   const launcher = resolveCodexLauncher();
   const child = spawn(process.execPath, [launcher, 'app-server'], {
     env: process.env,
@@ -90,18 +98,49 @@ async function withAppServer<T>(
   let nextRequestId = 1;
   const pending = new Map<number, (response: JsonRpcResponse) => void>();
   let exitReason: string | null = null;
+  let closed = false;
+
+  const write = (message: Record<string, unknown>) => {
+    if (exitReason) {
+      return;
+    }
+    child.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
+  };
+
+  const answerServerRequest = async (id: unknown, method: string, params: Record<string, unknown>) => {
+    try {
+      const result = await handlers.onServerRequest(method, params);
+      write({ id, result: result ?? null });
+    } catch (error) {
+      write({
+        id,
+        error: {
+          code: METHOD_NOT_FOUND,
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  };
 
   const reader = readline.createInterface({ input: child.stdout });
   reader.on('line', (line) => {
     if (!line.trim()) {
       return;
     }
-    let message: JsonRpcResponse;
+    let message: JsonRpcResponse & { method?: unknown; params?: unknown };
     try {
-      message = JSON.parse(line) as JsonRpcResponse;
+      message = JSON.parse(line);
     } catch {
-      // Server-to-client notifications and any non-JSON banner are not
-      // replies to anything this client asked for.
+      // A non-JSON banner is not part of the protocol.
+      return;
+    }
+    const params = (message.params && typeof message.params === 'object' ? message.params : {}) as Record<string, unknown>;
+    if (typeof message.method === 'string') {
+      if (message.id !== undefined && message.id !== null) {
+        void answerServerRequest(message.id, message.method, params);
+      } else {
+        handlers.onNotification(message.method, params);
+      }
       return;
     }
     if (typeof message.id !== 'number') {
@@ -112,7 +151,10 @@ async function withAppServer<T>(
   });
 
   const failPending = (reason: string) => {
-    exitReason = reason;
+    if (!exitReason) {
+      exitReason = reason;
+      handlers.onExit(reason);
+    }
     for (const resolve of pending.values()) {
       resolve({ error: { message: reason } });
     }
@@ -121,17 +163,22 @@ async function withAppServer<T>(
 
   child.on('error', (error) => failPending(error.message));
   child.on('exit', (code, signal) => {
+    // The reason reaches the chat as an error message; the server's own
+    // stderr (paths, config warnings) stays in the server log.
+    if (!closed && stderr.trim()) {
+      console.warn('[Codex] app-server exited unexpectedly; last stderr:', stderr.trim().split('\n').slice(-3).join(' | '));
+    }
     failPending(`codex app-server exited (code ${code ?? 'null'}, signal ${signal ?? 'null'})`);
   });
   // A child that dies mid-request leaves its pipes broken, and the next write
   // raises EPIPE on the stream rather than at the call site. Without a
   // listener that is an unhandled 'error' event, which takes the whole server
-  // down over one failed fork.
+  // down over one failed request.
   child.stdin?.on('error', (error) => failPending(error.message));
   child.stdout?.on('error', (error) => failPending(error.message));
   child.stderr?.on('error', () => {});
 
-  const call = (method: string, params: unknown): Promise<unknown> =>
+  const request = (method: string, params: unknown): Promise<unknown> =>
     new Promise((resolve, reject) => {
       if (exitReason) {
         reject(new AppError(`Codex app-server is not running: ${exitReason}`, {
@@ -163,31 +210,65 @@ async function withAppServer<T>(
         resolve(response.result);
       });
 
-      child.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+      write({ id, method, params });
     });
 
+  const close = () => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    reader.close();
+    child.kill('SIGTERM');
+    // A server busy in a tool call can ignore SIGTERM; never leave it behind.
+    const killTimer = setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill('SIGKILL');
+      }
+    }, CLOSE_GRACE_MS);
+    killTimer.unref?.();
+  };
+
   try {
-    // `capabilities` is deliberately empty. `thread/fork` with `lastTurnId` is
-    // in the stable protocol; only `beforeTurnId` and the turn-listing methods
-    // are gated behind `experimentalApi`, and neither is needed here.
-    await call('initialize', {
+    // `capabilities` is deliberately empty: everything used here — threads,
+    // turns, interrupt, fork with `lastTurnId` — is in the stable protocol.
+    await request('initialize', {
       clientInfo: { name: 'cloudcli', title: 'CloudCLI', version: '1' },
       capabilities: {},
     });
-    child.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'initialized', params: {} })}\n`);
-
-    return await run(call);
+    write({ method: 'initialized', params: {} });
   } catch (error) {
-    if (error instanceof AppError && exitReason) {
-      throw new AppError(`${error.message}${stderr ? ` — ${stderr.trim().split('\n').slice(-1)[0]}` : ''}`, {
-        code: error.code,
-        statusCode: error.statusCode,
-      });
-    }
+    close();
     throw error;
+  }
+
+  return { request, close };
+}
+
+/**
+ * Runs one exchange against a freshly spawned `codex app-server`.
+ *
+ * A process per operation rather than a pooled long-lived one: the handshake
+ * costs a fraction of a second, forking happens at most once per user action,
+ * and a shared child would need lifecycle handling — restarts, back-pressure,
+ * a crash taking every pending fork with it — for no measurable gain next to
+ * the model turn that follows.
+ */
+async function withAppServer<T>(
+  run: (call: (method: string, params: unknown) => Promise<unknown>) => Promise<T>,
+): Promise<T> {
+  const connection = await openCodexAppServer({
+    onNotification: () => {},
+    // A fork never starts a turn, so the server has nothing to ask for.
+    onServerRequest: (method) => {
+      throw new Error(`Unsupported request: ${method}`);
+    },
+    onExit: () => {},
+  });
+  try {
+    return await run(connection.request);
   } finally {
-    reader.close();
-    child.kill();
+    connection.close();
   }
 }
 
