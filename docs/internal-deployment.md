@@ -50,6 +50,15 @@ CLI. It is not published, so a deployment copies its wheel
 it into its own virtual environment and links it as `/usr/local/bin/docli`, so
 Claude, Codex and the terminal find it on `PATH`.
 
+The image also carries LibreOffice Writer and Calc (headless, no recommended
+packages). `docli` reads only `.docx`, `.xlsx` and `.xlsm`, so the agent
+instructions tell agents to convert a copy of a legacy `.doc` or `.xls` with
+`soffice --headless --convert-to docx|xlsx` first. The conversion uses a
+throwaway profile (`-env:UserInstallation`) and `timeout -k` (soffice ignores
+SIGTERM when hung), and never touches
+the user's original file. In Plan the conversion asks for approval, because it
+is not a read-only docli command.
+
 `docker/agent-instructions.md` tells every agent to use `docli word` and
 `docli excel` instead of ad-hoc scripts. The image points
 `CLOUDCLI_AGENT_INSTRUCTIONS_FILE` at it; the server appends the file to the
