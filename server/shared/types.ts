@@ -635,7 +635,44 @@ export type ProviderRuntimeContext = {
     interrupt(): Promise<void>;
     stopTask?(taskId: string): Promise<void>;
   };
+  /**
+   * Opens the `codex app-server` connection a Codex turn runs over when the
+   * app-server transport is selected. Production leaves this unset and the
+   * runtime spawns the bundled CLI; tests supply a scripted server.
+   */
+  openCodexAppServer?: (handlers: CodexAppServerHandlers) => Promise<CodexAppServerConnection>;
 };
+
+//----------------- CODEX APP-SERVER CONNECTION ------------
+/**
+ * What a `codex app-server` connection reports back besides replies.
+ *
+ * `onNotification` gets every server notification (`item/started`,
+ * `item/agentMessage/delta`, `turn/completed`, ...). `onServerRequest` must
+ * answer every request the server sends (approvals, user input); whatever it
+ * returns is sent as the result, and a throw is sent as a JSON-RPC error, so
+ * nothing the server asks is ever left pending. `onExit` fires once when the
+ * process ends, with a reason fit for an error message.
+ */
+export type CodexAppServerHandlers = {
+  onNotification: (method: string, params: AnyRecord) => void;
+  onServerRequest: (method: string, params: AnyRecord) => unknown | Promise<unknown>;
+  onExit: (reason: string) => void;
+};
+
+/**
+ * An initialized JSON-RPC connection to one `codex app-server` process.
+ *
+ * `request` resolves with the method's result or rejects with an `AppError`
+ * (rejection, timeout, or a dead process). `close` ends the process; it is
+ * safe to call more than once.
+ */
+export type CodexAppServerConnection = {
+  request: (method: string, params: unknown) => Promise<unknown>;
+  close: () => void;
+};
+
+// ---------------------------
 
 export type ProviderRunFunction = (
   command: string,

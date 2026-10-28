@@ -17,6 +17,8 @@ services:
       DATABASE_PATH: /home/node/.cloudcli/auth.db
       CLOUDCLI_CONTAINER_DEPLOYMENT: "true"
       WORKSPACES_ROOT: /workspace
+      # exec (default) or app-server; only app-server streams Codex replies.
+      CLOUDCLI_CODEX_TRANSPORT: ${CLOUDCLI_CODEX_TRANSPORT:-exec}
     ports:
       - "${CLOUDCLI_BIND_ADDRESS:-127.0.0.1}:${CLOUDCLI_PORT:-3001}:3001"
     volumes:

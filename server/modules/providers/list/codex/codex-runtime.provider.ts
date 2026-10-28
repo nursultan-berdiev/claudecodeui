@@ -22,16 +22,26 @@ import {
   createNormalizedMessage,
 } from '@/shared/index.js';
 import { notifyRunFailed, notifyRunStopped } from '@/modules/notifications/index.js';
+import { startCodexAppServerTurn } from '@/modules/providers/list/codex/codex-app-server-turn.provider.js';
 import { readAgentInstructions } from '@/shared/agent-instructions.js';
 import type { AnyRecord, ProviderRuntimeContext, ProviderRuntimeWriter } from '@/shared/index.js';
 
 type ActiveCodexSession = {
-  thread: Thread;
-  codex: Codex;
   status: 'running' | 'aborted' | 'completed';
   abortController: AbortController;
   startedAt: string;
 };
+
+/**
+ * Which transport a Codex chat turn runs over. `exec` is the SDK
+ * (`codex exec --experimental-json`), which reports each message once it is
+ * finished; `app-server` is the CLI's JSON-RPC server, which also streams the
+ * reply as it is written. Read on every turn; a failure to start the
+ * app-server falls back to exec for that turn.
+ */
+function readCodexTransport(): 'exec' | 'app-server' {
+  return process.env.CLOUDCLI_CODEX_TRANSPORT === 'app-server' ? 'app-server' : 'exec';
+}
 
 const activeCodexSessions = new Map<string, ActiveCodexSession>();
 
@@ -300,8 +310,6 @@ async function queryCodex(
     ? effort as ModelReasoningEffort
     : undefined;
 
-  let codex: Codex;
-  let thread: Thread;
   // Provider-native thread id (starts as the resume id, or is captured from
   // the stream for brand-new sessions).
   let capturedSessionId = providerSessionId;
@@ -318,32 +326,36 @@ async function queryCodex(
   // the provider-native thread id once captured (legacy/direct API callers).
   const sessionKey = () => sessionId || capturedSessionId || null;
 
+  // Native thread id as the transport reports it, for the terminal event.
+  let reportedThreadId: string | null = null;
+  // Reply messages whose text has been streamed and whose finished row has
+  // not arrived yet, by item id (the stream's id on the wire).
+  const openStreams = new Set<string>();
+  // Ends every reply still streaming when the turn stops short of its
+  // finished message (a failed turn, a crashed process), so the client keeps
+  // the partial text as a finished bubble instead of one that never settles.
+  const endOpenStreams = () => {
+    for (const streamId of openStreams) {
+      sendMessage(ws, createNormalizedMessage({
+        kind: 'stream_end',
+        streamId,
+        sessionId: capturedSessionId || sessionId || null,
+        provider: 'codex',
+      }));
+    }
+    openStreams.clear();
+  };
+  // The app-server turn's process, ended in `finally` however the run ends.
+  let disposeAppServerTurn: (() => Promise<void>) | null = null;
+
   try {
     const agentInstructions = readAgentInstructions();
-    codex = new Codex(agentInstructions ? { config: { developer_instructions: agentInstructions } } : undefined);
-
-    const threadOptions: ThreadOptions = {
-      workingDirectory,
-      skipGitRepoCheck: true,
-      sandboxMode,
-      approvalPolicy,
-      model: resolvedModel,
-      modelReasoningEffort: resolvedEffort,
-    };
-
-    if (providerSessionId) {
-      thread = codex.resumeThread(providerSessionId, threadOptions);
-    } else {
-      thread = codex.startThread(threadOptions);
-    }
 
     const registerSession = (id: string | null) => {
       if (!id) {
         return;
       }
       activeCodexSessions.set(id, {
-        thread,
-        codex,
         status: 'running',
         abortController,
         startedAt: new Date().toISOString()
@@ -364,14 +376,63 @@ async function queryCodex(
     const turnInput = normalizedImages.length > 0
       ? buildCodexInputItems(promptWithImageFallback, normalizedImages, workingDirectory)
       : promptWithFiles;
-    const streamedTurn = await thread.runStreamed(turnInput, {
-      signal: abortController.signal
-    });
 
-    for await (const event of streamedTurn.events) {
+    // The exec transport: the SDK's own thread, as every turn ran before the
+    // app-server transport existed.
+    const startExecTurn = async () => {
+      const codex = new Codex(agentInstructions ? { config: { developer_instructions: agentInstructions } } : undefined);
+      const threadOptions: ThreadOptions = {
+        workingDirectory,
+        skipGitRepoCheck: true,
+        sandboxMode,
+        approvalPolicy,
+        model: resolvedModel,
+        modelReasoningEffort: resolvedEffort,
+      };
+      const thread: Thread = providerSessionId
+        ? codex.resumeThread(providerSessionId, threadOptions)
+        : codex.startThread(threadOptions);
+      const streamedTurn = await thread.runStreamed(turnInput, {
+        signal: abortController.signal
+      });
+      return { events: streamedTurn.events as AsyncIterable<AnyRecord>, threadId: () => thread.id };
+    };
+
+    let turnEvents: AsyncIterable<AnyRecord> | null = null;
+    let readThreadId: () => string | null = () => null;
+    if (readCodexTransport() === 'app-server') {
+      try {
+        const appServerTurn = await startCodexAppServerTurn({
+          providerSessionId,
+          workingDirectory,
+          model: resolvedModel,
+          effort: resolvedEffort,
+          sandboxMode: sandboxMode ?? 'workspace-write',
+          approvalPolicy: approvalPolicy ?? 'on-request',
+          developerInstructions: agentInstructions,
+          input: turnInput,
+          signal: abortController.signal,
+          open: context.openCodexAppServer,
+        });
+        turnEvents = appServerTurn.events;
+        readThreadId = () => appServerTurn.threadId;
+        disposeAppServerTurn = appServerTurn.dispose;
+      } catch (error) {
+        // Nothing of the turn has run yet, so exec can still carry it.
+        console.warn('[Codex] app-server transport failed to start, falling back to exec:', error instanceof Error ? error.message : error);
+      }
+    }
+    if (!turnEvents) {
+      const execTurn = await startExecTurn();
+      turnEvents = execTurn.events;
+      readThreadId = execTurn.threadId;
+    }
+
+    for await (const event of turnEvents) {
+      reportedThreadId = readThreadId() || reportedThreadId;
       // Capture thread/session id lazily from the stream (Codex emits this asynchronously).
       if (event.type === 'thread.started') {
-        const discoveredSessionId = event.thread_id || null;
+        const discoveredSessionId: string | null = typeof event.thread_id === 'string' && event.thread_id ? event.thread_id : null;
         if (discoveredSessionId && !capturedSessionId) {
           capturedSessionId = discoveredSessionId;
           registerSession(sessionKey());
@@ -398,12 +459,27 @@ async function queryCodex(
         }
       }
 
+      // Reply text as it is written — only the app-server transport sends it.
+      // The stream is named by the message's item id, which is also the id of
+      // the finished row that replaces it.
+      if (event.type === 'agent_message.delta') {
+        openStreams.add(event.item_id);
+        sendMessage(ws, createNormalizedMessage({
+          kind: 'stream_delta',
+          streamId: event.item_id,
+          content: event.delta,
+          sessionId: capturedSessionId || sessionId || null,
+          provider: 'codex',
+        }));
+        continue;
+      }
+
       // Progress events used to be dropped, so a long shell command or a
       // growing plan showed nothing until it finished. They are forwarded now;
       // every item carries a stable id, so the client replaces the row it
-      // already has rather than stacking a new one per tick. Text items are
-      // still skipped mid-flight because assistant prose arrives through the
-      // separate streaming path.
+      // already has rather than stacking a new one per tick. Reply and
+      // reasoning items are skipped mid-flight: a reply's text streams
+      // through `agent_message.delta` above, and its finished row follows.
       if (
         (event.type === 'item.started' || event.type === 'item.updated')
         && !PROGRESSIVE_CODEX_ITEM_TYPES.has(event.item?.type)
@@ -418,6 +494,27 @@ async function queryCodex(
 
       // Normalize the transformed event into NormalizedMessage(s) via adapter
       const normalizedMsgs = context.normalizeMessage(transformed, capturedSessionId || sessionId || null);
+
+      // A streamed reply ends here, and its finished row takes the bubble's
+      // place. When the message normalizes to something other than prose (a
+      // proposed plan becomes a plan card), the bubble is dropped instead.
+      const streamedItemId = event.type === 'item.completed' && event.item?.type === 'agent_message'
+        ? String(event.item.id ?? '')
+        : '';
+      if (streamedItemId && openStreams.delete(streamedItemId)) {
+        const replyRow = normalizedMsgs.find((msg) => msg.kind === 'text' && msg.role === 'assistant');
+        sendMessage(ws, createNormalizedMessage({
+          kind: 'stream_end',
+          streamId: streamedItemId,
+          ...(replyRow ? {} : { discard: true }),
+          sessionId: capturedSessionId || sessionId || null,
+          provider: 'codex',
+        }));
+        if (replyRow) {
+          replyRow.replacesStreamId = streamedItemId;
+        }
+      }
+
       for (const msg of normalizedMsgs) {
         sendMessage(ws, msg);
       }
@@ -444,6 +541,8 @@ async function queryCodex(
       }
     }
 
+    endOpenStreams();
+
     // Send the terminal completion event — skipped for aborted runs, whose
     // terminal `complete` (aborted: true) was already sent by abort-session.
     const runSession = activeCodexSessions.get(sessionKey() || '');
@@ -452,7 +551,7 @@ async function queryCodex(
       sendMessage(ws, createCompleteMessage({
         provider: 'codex',
         sessionId: capturedSessionId || sessionId || null,
-        actualSessionId: capturedSessionId || thread.id || sessionId || null,
+        actualSessionId: capturedSessionId || reportedThreadId || sessionId || null,
         exitCode: terminalFailure ? 1 : 0,
       }));
       if (!terminalFailure) {
@@ -473,6 +572,10 @@ async function queryCodex(
       session?.status === 'aborted' ||
       runError.name === 'AbortError' ||
       runError.message.toLowerCase().includes('aborted');
+
+    // Whatever ended the run — a failure, or the process dying during an
+    // abort — a reply left streaming is closed.
+    endOpenStreams();
 
     if (!wasAborted) {
       console.error('[Codex] Error:', error);
@@ -503,6 +606,7 @@ async function queryCodex(
     }
 
   } finally {
+    await disposeAppServerTurn?.();
     // Update session status
     if (sessionKey()) {
       const session = activeCodexSessions.get(sessionKey() || '');
