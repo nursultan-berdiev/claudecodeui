@@ -50,6 +50,29 @@ CLI. It is not published, so a deployment copies its wheel
 it into its own virtual environment and links it as `/usr/local/bin/docli`, so
 Claude, Codex and the terminal find it on `PATH`.
 
+The image also carries LibreOffice Writer and Calc (headless, no recommended
+packages). `docli` reads only `.docx`, `.xlsx` and `.xlsm`, so the agent
+instructions tell agents to convert a copy of a legacy `.doc` or `.xls` with
+`soffice --headless --convert-to docx|xlsx` first and read the result with
+`docli`. Each conversion runs in a subshell with a throwaway profile
+(`-env:UserInstallation`), `timeout -k` (soffice ignores SIGTERM when hung) and
+a `trap` that removes the temporary folder; the user's original file is never
+touched.
+
+Limits of the conversion, and what is accepted:
+
+- Macros. The converted files come from users, so
+  `docker/libreoffice-hardening.xcd` disables macro execution and sets the
+  highest macro security level, both finalized so no profile can relax them.
+- External links. A `.docx` with an externally linked image converted with
+  the stock settings made no request to the linked URL (checked on the image
+  on 29.10.2026). The settings that govern link updates are left at their
+  defaults.
+- Plan. The conversion is not on the read-only docli list, yet a live check
+  on the local copy showed Claude running it in Plan without an approval
+  request. Plan therefore does not reliably stop it; this is accepted, since
+  the conversion only writes inside a temporary folder.
+
 `docker/agent-instructions.md` tells every agent to use `docli word` and
 `docli excel` instead of ad-hoc scripts. The image points
 `CLOUDCLI_AGENT_INSTRUCTIONS_FILE` at it; the server appends the file to the
