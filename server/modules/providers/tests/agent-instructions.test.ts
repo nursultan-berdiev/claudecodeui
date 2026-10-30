@@ -8,6 +8,7 @@ import { Codex } from '@openai/codex-sdk';
 import type { Thread } from '@openai/codex-sdk';
 
 import { mapCliOptionsToSDK, matchesToolPermission } from '@/modules/providers/list/claude/claude-runtime.provider.js';
+import { codexPlanSandbox } from '@/modules/providers/list/codex/codex-plan-check.js';
 import { codexRuntime } from '@/modules/providers/list/codex/codex-runtime.provider.js';
 import { readAgentInstructions } from '@/shared/agent-instructions.js';
 import type { ProviderRuntimeContext } from '@/shared/index.js';
@@ -67,6 +68,7 @@ test('a Bash prefix rule does not approve commands chained, piped or substituted
 });
 
 test('Codex runs pass the deployment instructions as developer instructions', async (t) => {
+  t.mock.method(codexPlanSandbox, 'check', async () => ({ outcome: 'honoured' as const, detail: '' }));
   const thread = {
     id: 'native-thread',
     async runStreamed() {
@@ -86,5 +88,6 @@ test('Codex runs pass the deployment instructions as developer instructions', as
     isProviderInstalled: async () => true,
   };
   await withInstructionsFile('Use docli for Word.', () => codexRuntime.run('hi', { cwd: process.cwd(), permissionMode: 'plan' }, { isWebSocketWriter: true, send: () => {} }, context));
+  // Plan's permissions profile travels as raw overrides, not in this config.
   assert.deepEqual(capturedConfig, { developer_instructions: 'Use docli for Word.' });
 });

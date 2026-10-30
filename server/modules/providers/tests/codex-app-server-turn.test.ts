@@ -1,13 +1,18 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { mock } from 'node:test';
 
 import { Codex } from '@openai/codex-sdk';
 import type { Thread } from '@openai/codex-sdk';
 
 import { CodexSessionsProvider } from '@/modules/providers/list/codex/codex-sessions.provider.js';
 import { startCodexAppServerTurn } from '@/modules/providers/list/codex/codex-app-server-turn.provider.js';
+import { codexPlanSandbox } from '@/modules/providers/list/codex/codex-plan-check.js';
+import { CODEX_PLAN_PROFILE } from '@/modules/providers/list/codex/codex-plan-profile.js';
 import { codexRuntime } from '@/modules/providers/list/codex/codex-runtime.provider.js';
 import type { AnyRecord, CodexAppServerHandlers, NormalizedMessage, ProviderRuntimeContext } from '@/shared/types.js';
+
+// Plan turns here are about the transport; the sandbox check has its own tests.
+mock.method(codexPlanSandbox, 'check', async () => ({ outcome: 'honoured' as const, detail: '' }));
 
 /**
  * With CLOUDCLI_CODEX_TRANSPORT=app-server a Codex turn runs over the CLI's
@@ -165,8 +170,28 @@ test('a new thread starts with the run\'s settings, a resumed one resumes', asyn
   await runTurn({ open: resumed.open, resumed: true, permissionMode: 'plan' });
   const resume = resumed.server.requests.find((request) => request.method === 'thread/resume');
   assert.equal(resume?.params.threadId, 'thread-old');
-  assert.equal(resume?.params.sandbox, 'read-only');
+  // Plan sends no sandbox mode: the permissions profile in config picks the sandbox.
+  assert.equal('sandbox' in (resume?.params ?? {}), false);
+  assert.equal(resume?.params.config?.default_permissions, CODEX_PLAN_PROFILE);
   assert.equal(resumed.server.requests.some((request) => request.method === 'thread/start'), false);
+});
+
+test('Plan with an effort sends both the permissions profile and the effort', async () => {
+  const { server, open } = scriptServer({ notifications: replyNotifications('a') });
+  await runTurn({ open, permissionMode: 'plan', effort: 'high' });
+  const config = server.requests.find((request) => request.method === 'thread/start')?.params.config;
+  assert.ok(config, 'Plan sends a config');
+  assert.equal(config.default_permissions, CODEX_PLAN_PROFILE);
+  assert.ok(config.permissions?.[CODEX_PLAN_PROFILE]?.filesystem);
+  assert.equal(config.model_reasoning_effort, 'high');
+});
+
+test('a run without a permissions profile or an effort sends no config', async () => {
+  const { server, open } = scriptServer({ notifications: replyNotifications('a') });
+  await runTurn({ open, permissionMode: 'acceptEdits' });
+  const start = server.requests.find((request) => request.method === 'thread/start');
+  assert.equal(start?.params.sandbox, 'workspace-write');
+  assert.equal('config' in (start?.params ?? {}), false);
 });
 
 test('a reply that normalizes to something other than prose drops its bubble', async () => {
