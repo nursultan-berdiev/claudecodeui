@@ -39,7 +39,18 @@ export type CodexPlanPaths = {
 };
 
 /** Folder entries Plan's rules are built from, read once per turn. */
-export type CodexPlanFolders = Map<string, string[]>;
+type CodexPlanFolders = Map<string, string[]>;
+
+/**
+ * A turn Plan cannot protect. The message is written for the chat: it states
+ * the reason and names no path of the server.
+ */
+export class CodexPlanRefusal extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CodexPlanRefusal';
+  }
+}
 
 /** Plan's sandbox for one turn, in the shape the Codex transports take. */
 export type CodexPlanPermissions = Pick<ThreadOptions, 'sandboxMode' | 'approvalPolicy'> & { config?: CodexConfig };
@@ -96,19 +107,6 @@ function readableInside(paths: CodexPlanPaths): Map<string, Set<string>> {
 const CODEX_SECRET_NAMES = ['auth.json', 'sessions', 'archived_sessions', 'history.jsonl', 'log'];
 
 const GLOB_SPECIAL = /[*?[\]{}!]/;
-const warnedGlobRoots = new Set<string>();
-
-/** A glob rule under `root`, or nothing when `root` itself holds glob syntax and cannot be matched literally. */
-function globUnder(root: string, pattern: string): string[] {
-  if (!GLOB_SPECIAL.test(root)) {
-    return [`${root}/${pattern}`];
-  }
-  if (!warnedGlobRoots.has(root)) {
-    warnedGlobRoots.add(root);
-    console.warn(`[Codex] Plan cannot deny ${pattern} under ${root}: the path itself contains glob syntax.`);
-  }
-  return [];
-}
 
 function isSameOrInside(child: string, parent: string): boolean {
   return child === parent || child.startsWith(`${parent}${path.sep}`);
@@ -126,7 +124,7 @@ function readFolder(folder: string): string[] {
   }
 }
 
-/** Reads $HOME and the partly open folders once, for one turn's rules. */
+/** Reads $HOME and the partly open folders once, for one turn's rules. Exported for tests. */
 export function readCodexPlanFolders(paths: CodexPlanPaths): CodexPlanFolders {
   const folders: CodexPlanFolders = new Map([[paths.home, readFolder(paths.home)]]);
   for (const folder of readableInside(paths).keys()) {
@@ -161,7 +159,7 @@ function holdsWork(paths: CodexPlanPaths, entry: string): boolean {
  * child, hence entry by entry), and except a visible entry that holds the
  * workspaces or the chat's folder (see holdsWork).
  */
-export function listCodexPlanDeniedPaths(paths: CodexPlanPaths, folders: CodexPlanFolders): string[] {
+function listCodexPlanDeniedPaths(paths: CodexPlanPaths, folders: CodexPlanFolders): string[] {
   const partlyOpen = readableInside(paths);
   const denied: string[] = [];
   for (const name of folders.get(paths.home) ?? []) {
@@ -202,10 +200,12 @@ function databaseFiles(paths: CodexPlanPaths): string[] {
  * Glob rules for `.env*` files under the workspaces root and the chat's
  * folder. A root that holds an existing denied folder, or lies inside one,
  * gets no rule: the glob would match inside the denied folder and stop
- * bubblewrap from starting. Outside Docker the workspaces root is $HOME itself, so there the
- * chat's folder carries the rule.
+ * bubblewrap from starting. Outside Docker the workspaces root is $HOME
+ * itself, so there the chat's folder carries the rule. A root whose own path
+ * holds glob syntax cannot be matched literally and so cannot carry the rule:
+ * the turn is refused rather than run with `.env` files readable.
  */
-export function listCodexPlanDeniedPatterns(paths: CodexPlanPaths, deniedPaths: string[]): string[] {
+function listCodexPlanDeniedPatterns(paths: CodexPlanPaths, deniedPaths: string[]): string[] {
   // Only an existing denied folder can hold a match: files (the database) and
   // paths that do not exist yet cannot.
   const deniedFolders = deniedPaths.filter(isFolder);
@@ -215,16 +215,32 @@ export function listCodexPlanDeniedPatterns(paths: CodexPlanPaths, deniedPaths: 
   ));
   return [...new Set(roots)]
     .filter((root, _index, kept) => !kept.some((other) => other !== root && isSameOrInside(root, other)))
-    .flatMap((root) => globUnder(root, '**/.env*'));
+    .map((root) => {
+      if (GLOB_SPECIAL.test(root)) {
+        throw new CodexPlanRefusal(root === paths.workspacesRoot
+          ? 'the workspaces root path contains glob characters (* ? [ ] { } !), so Plan cannot keep .env files closed there. Ask an administrator.'
+          : "the chat's folder path contains glob characters (* ? [ ] { } !), so Plan cannot keep .env files closed there. Rename the folder or use another mode.");
+      }
+      return `${root}/**/.env*`;
+    });
 }
 
-/** Plan's Codex config: the permissions profile, selected by default, and no login shell (~/.profile is denied). */
+/**
+ * Plan's Codex config: the permissions profile, selected by default, and no
+ * login shell (~/.profile is denied). Throws `CodexPlanRefusal` for a turn
+ * whose folders the profile cannot protect or would hide from the chat.
+ */
 export function buildCodexPlanPermissionsConfig(
   paths: CodexPlanPaths,
   folders: CodexPlanFolders = readCodexPlanFolders(paths),
 ): CodexConfig {
   const filesystem: CodexConfig = { ':root': 'read', ':slash_tmp': 'write' };
   const deniedPaths = listCodexPlanDeniedPaths(paths, folders);
+  if (paths.cwd && deniedPaths.some((denied) => isSameOrInside(paths.cwd as string, denied))) {
+    throw new CodexPlanRefusal(
+      "the chat's folder lies in a closed part of the server's home directory (hidden folders hold keys and sign-ins), which Plan cannot read. Open the chat in another folder or use another mode.",
+    );
+  }
   for (const denied of [...deniedPaths, ...listCodexPlanDeniedPatterns(paths, deniedPaths)]) {
     filesystem[denied] = 'deny';
   }

@@ -115,7 +115,7 @@ for (const command of ['', '  \n\t']) {
 }
 
 test('Codex Plan refuses the turn, without starting Codex, when the profile check fails', async (t) => {
-  t.mock.method(codexPlanSandbox, 'check', async () => ({ outcome: 'ignored' as const, detail: 'wrong: skill' }));
+  t.mock.method(codexPlanSandbox, 'check', async () => ({ outcome: 'ignored' as const, detail: 'wrong: skill /home/node/.codex' }));
   t.mock.method(console, 'error', () => {});
   const start = t.mock.method(Codex.prototype, 'startThread', () => {
     throw new Error('Codex must not start');
@@ -131,6 +131,7 @@ test('Codex Plan refuses the turn, without starting Codex, when the profile chec
   await codexRuntime.run('hi', { permissionMode: 'plan', cwd: process.cwd() }, { isWebSocketWriter: true, send: (message) => messages.push(message) }, context);
   assert.equal(start.mock.callCount(), 0, 'no read-only fallback: Codex does not run at all');
   const error = messages.find((message) => message.kind === 'error');
-  assert.match(String(error?.content), /^Plan is unavailable: .*wrong: skill/);
+  assert.match(String(error?.content), /^Plan is unavailable: this Codex does not apply/);
+  assert.ok(!String(error?.content).includes('/home/node'), 'the check detail stays out of the chat');
   assert.ok(messages.some((message) => message.kind === 'complete' && message.exitCode === 1));
 });

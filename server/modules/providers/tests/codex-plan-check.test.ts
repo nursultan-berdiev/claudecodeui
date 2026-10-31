@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -58,7 +58,7 @@ test('the Plan check output is read into honoured, ignored, no-sandbox or unknow
 test('the Plan check keeps "honoured" for good, a "no" for a while, a failed check briefly', async () => {
   let clock = 0;
   const now = () => clock;
-  for (const outcome of ['honoured', 'ignored', 'no-sandbox', 'unknown'] as PlanCheckOutcome[]) {
+  for (const outcome of ['honoured', 'ignored', 'no-sandbox', 'no-scratch', 'unknown'] as PlanCheckOutcome[]) {
     clock = 0;
     let runs = 0;
     const check = createCodexPlanProfileChecker(async () => { runs += 1; return { outcome, detail: '' }; }, now);
@@ -97,11 +97,56 @@ test('a sandbox run that fails still hands back what it printed', async () => {
   assert.deepEqual(bare, { stdout: '', stderr: 'spawn ENOENT' });
 });
 
-test('a Plan check that cannot even set up answers unknown', async (t) => {
-  t.mock.method(console, 'warn', () => {});
+test('a Plan check that cannot lay out its folder answers no-scratch and logs why', async (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
   const result = await runPlanProfileCheck(path.join(os.tmpdir(), 'no-such-folder', 'deeper'));
-  assert.equal(result.outcome, 'unknown');
+  assert.equal(result.outcome, 'no-scratch');
   assert.match(result.detail, /ENOENT/);
+  assert.ok(warn.mock.calls.some((call) => call.arguments.some((arg) => String(arg).includes('no-such-folder'))), 'the server log keeps the detail');
+});
+
+test('a Plan check that fails with a command line or paths shows the chat none of it', async (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const commandLine = 'Command failed: /usr/bin/node /app/node_modules/codex/bin/codex.js -c permissions.cloudcli-plan.filesystem."/home/node/secret"=deny sandbox';
+  const output = await runInCodexSandbox({ k: 'v' }, 'true', os.tmpdir(), async () => { throw new Error(commandLine); });
+  const checked = classifyPlanCheck(output, expectations);
+  assert.equal(checked.outcome, 'unknown');
+  assert.ok(checked.detail.includes('/home/node/secret'), 'the detail carries the path for the log');
+
+  t.mock.method(codexPlanSandbox, 'check', async () => ({ outcome: checked.outcome, detail: checked.detail }));
+  await assert.rejects(resolveCodexPlanPermissions(os.tmpdir()), (error: Error) => {
+    assert.match(error.message, /^Plan is unavailable: the Plan sandbox check could not run\. Try again in a minute\.$/);
+    for (const leak of ['Command failed', '/home/node', '/app/', 'codex.js', 'permissions.']) {
+      assert.ok(!error.message.includes(leak), `the chat error holds no "${leak}"`);
+    }
+    return true;
+  });
+
+  // End to end: the real check fails on a missing folder; its path is logged, not shown.
+  t.mock.method(codexPlanSandbox, 'check', () => runPlanProfileCheck(path.join(os.tmpdir(), 'no-such-folder', 'deeper')));
+  await assert.rejects(resolveCodexPlanPermissions(os.tmpdir()), (error: Error) => {
+    assert.ok(!error.message.includes('no-such-folder') && !error.message.includes('ENOENT'));
+    assert.ok(/home directory/.test(error.message), 'the chat is told the real reason');
+    return true;
+  });
+  assert.ok(warn.mock.calls.some((call) => call.arguments.some((arg) => String(arg).includes('no-such-folder'))));
+});
+
+test('Plan refuses a chat folder it cannot protect, with a reason and no path', async (t) => {
+  t.mock.method(codexPlanSandbox, 'check', async () => ({ outcome: 'honoured', detail: '' }));
+  const folder = await mkdtemp(path.join(os.tmpdir(), 'plan-glob-'));
+  try {
+    const globbed = path.join(folder, 'proj[1]');
+    await mkdir(globbed);
+    await assert.rejects(resolveCodexPlanPermissions(globbed), (error: Error & { code?: string }) => {
+      assert.equal(error.code, 'CODEX_PLAN_FOLDER_UNSUPPORTED');
+      assert.match(error.message, /^Plan is unavailable: .*glob characters/);
+      assert.ok(!error.message.includes(folder));
+      return true;
+    });
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
 });
 
 test('the Plan check layout puts the chat in $HOME next to a key folder, the workspaces outside', async () => {
@@ -125,11 +170,12 @@ test('the Plan check layout puts the chat in $HOME next to a key folder, the wor
 });
 
 test('Plan is refused, with the reason, until the profile check passes', async (t) => {
-  for (const outcome of ['ignored', 'no-sandbox', 'unknown'] as PlanCheckOutcome[]) {
+  for (const outcome of ['ignored', 'no-sandbox', 'no-scratch', 'unknown'] as PlanCheckOutcome[]) {
     const check = t.mock.method(codexPlanSandbox, 'check', async () => ({ outcome, detail: 'probe detail' }));
     await assert.rejects(resolveCodexPlanPermissions(os.tmpdir()), (error: Error & { code?: string }) => {
       assert.equal(error.code, 'CODEX_PLAN_SANDBOX_UNAVAILABLE');
-      assert.match(error.message, /^Plan is unavailable: .*\(probe detail\)$/);
+      assert.match(error.message, /^Plan is unavailable: .+/);
+      assert.ok(!error.message.includes('probe detail'), 'the check detail stays out of the chat');
       return true;
     }, `${outcome} refuses Plan instead of falling back to the read-only sandbox`);
     check.mock.restore();

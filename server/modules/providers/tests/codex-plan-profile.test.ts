@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import {
   CODEX_PLAN_PROFILE,
+  CodexPlanRefusal,
   buildCodexPlanPermissionsConfig,
   readCodexPlanFolders,
   resolveCodexPlanPaths,
@@ -132,18 +133,22 @@ test('Codex Plan follows CODEX_HOME, a relative DATABASE_PATH and a chat outside
   }
 });
 
-test('Codex Plan skips and reports a glob rule whose root itself holds glob syntax', async (t) => {
-  const warn = t.mock.method(console, 'warn', () => {});
+test('Codex Plan refuses a turn whose workspaces root or chat folder holds glob syntax', async () => {
   const home = await makeHome();
   try {
-    const filesystem = planFilesystem({
-      home,
-      codexHome: path.join(home, '.codex'),
-      databasePath: path.join(home, '.cloudcli', 'auth.db'),
-      workspacesRoot: '/srv/work[1]',
-    });
-    assert.equal(Object.keys(filesystem).some((key) => key.startsWith('/srv/work[1]/')), false);
-    assert.ok(warn.mock.calls.some((call) => String(call.arguments[0]).includes('/srv/work[1]')), 'the skipped rule is logged');
+    const base = { home, codexHome: path.join(home, '.codex'), databasePath: path.join(home, '.cloudcli', 'auth.db') };
+    assert.throws(
+      () => planFilesystem({ ...base, workspacesRoot: '/srv/work[1]' }),
+      (error: unknown) => error instanceof CodexPlanRefusal && /workspaces root.*glob/.test(error.message) && !error.message.includes('/srv'),
+      'a workspaces root with glob syntax cannot carry the .env rule: refused, no path in the message',
+    );
+    assert.throws(
+      () => planFilesystem({ ...base, workspacesRoot: '/workspace', cwd: '/elsewhere/proj{a}' }),
+      (error: unknown) => error instanceof CodexPlanRefusal && /chat's folder.*glob/.test(error.message) && !error.message.includes('/elsewhere'),
+    );
+    // A chat folder inside a clean workspaces root is covered by that root's rule.
+    const covered = planFilesystem({ ...base, workspacesRoot: '/workspace', cwd: '/workspace/proj[1]' });
+    assert.equal(covered['/workspace/**/.env*'], 'deny');
   } finally {
     await rm(home, { recursive: true, force: true });
   }
@@ -185,21 +190,16 @@ test('Codex Plan opens the $HOME entry holding the chat but keeps the workspaces
   }
 });
 
-test('Codex Plan keeps a key folder closed even when the chat folder lies inside it', async () => {
+test('Codex Plan refuses a chat whose folder lies inside a key folder, and says why', async () => {
   const home = await makeHome();
   try {
     await mkdir(path.join(home, '.ssh', 'work'), { recursive: true });
-    const cwd = path.join(home, '.ssh', 'work');
-    const filesystem = planFilesystem({
-      home,
-      codexHome: path.join(home, '.codex'),
-      databasePath: path.join(home, '.cloudcli', 'auth.db'),
-      workspacesRoot: home,
-      cwd,
-    });
-    assert.equal(filesystem[path.join(home, '.ssh')], 'deny');
-    assert.equal(Object.keys(filesystem).some((key) => key.startsWith(`${cwd}/`)), false,
-      'no glob inside a denied folder: it would stop the sandbox from starting');
+    const base = { home, codexHome: path.join(home, '.codex'), databasePath: path.join(home, '.cloudcli', 'auth.db'), workspacesRoot: home };
+    assert.throws(
+      () => planFilesystem({ ...base, cwd: path.join(home, '.ssh', 'work') }),
+      (error: unknown) => error instanceof CodexPlanRefusal && /closed part/.test(error.message) && !error.message.includes(home),
+    );
+    assert.equal(planFilesystem(base)[path.join(home, '.ssh')], 'deny', 'the key folder stays closed without a chat inside it');
   } finally {
     await rm(home, { recursive: true, force: true });
   }
@@ -208,17 +208,21 @@ test('Codex Plan keeps a key folder closed even when the chat folder lies inside
 test('Codex Plan never opens a hidden $HOME entry, listed or not, around the chat folder', async () => {
   const home = await makeHome();
   try {
-    for (const hidden of ['.cargo', '.vault-token-dir']) {
-      const cwd = path.join(home, hidden, 'work');
+    await mkdir(path.join(home, '.local', 'share', 'proj'), { recursive: true });
+    for (const hidden of ['.cargo', '.vault-token-dir', '.local/share']) {
+      const cwd = path.join(home, hidden, 'proj');
       await mkdir(cwd, { recursive: true });
-      const filesystem = planFilesystem({
-        home,
-        codexHome: path.join(home, '.codex'),
-        databasePath: path.join(home, '.cloudcli', 'auth.db'),
-        workspacesRoot: '/workspace',
-        cwd,
-      });
-      assert.equal(filesystem[path.join(home, hidden)], 'deny', `${hidden} stays denied`);
+      assert.throws(
+        () => planFilesystem({
+          home,
+          codexHome: path.join(home, '.codex'),
+          databasePath: path.join(home, '.cloudcli', 'auth.db'),
+          workspacesRoot: '/workspace',
+          cwd,
+        }),
+        CodexPlanRefusal,
+        `a chat inside ${hidden} is refused, not run with its folder silently unreadable`,
+      );
     }
   } finally {
     await rm(home, { recursive: true, force: true });
@@ -240,10 +244,10 @@ test('Codex Plan judges a $HOME link by where it leads', async () => {
       if (previous === undefined) delete process.env.HOME; else process.env.HOME = previous;
     }
     assert.equal(paths.cwd, path.join(home, '.ssh', 'work'), 'the chat folder is resolved through the link');
-    const filesystem = planFilesystem(paths);
+    assert.throws(() => planFilesystem(paths), CodexPlanRefusal, 'a chat reached through a link into a hidden folder is refused');
+    const filesystem = planFilesystem({ ...paths, cwd: undefined });
     assert.equal(filesystem[path.join(home, 'work')], 'deny', 'a visible link into a hidden folder is not opened');
     assert.equal(filesystem[path.join(home, '.ssh')], 'deny');
-    assert.equal(Object.keys(filesystem).some((key) => key.includes('/.ssh/work/**')), false, 'no glob inside the denied folder');
 
     await mkdir(path.join(home, 'real-code', 'app'), { recursive: true });
     await symlink(path.join(home, 'real-code'), path.join(home, 'code'));

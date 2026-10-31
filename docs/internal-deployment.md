@@ -186,7 +186,7 @@ selects the named permissions profile `cloudcli-plan` by config
   projects can live in `$HOME`, a visible entry that holds the workspaces root
   or the chat's folder stays open. Hidden entries never do, listed or not
   (`.ssh`, `.aws`, `.config`, `.cargo`, `.vault-token`, ...): a chat working
-  inside one cannot read its own folder in Plan. The chat's folder, the
+  inside one cannot read its own folder, so the turn is refused. The chat's folder, the
   workspaces root and every entry are judged by where they lead after
   symlinks, so a link such as `~/work -> ~/.ssh` counts as hidden;
 - Codex's secret files are also denied by name (`auth.json`, `sessions`,
@@ -203,8 +203,8 @@ selects the named permissions profile `cloudcli-plan` by config
   inside one gets no rule, for the same reason (the database files do not
   count, they are files). Outside Docker the workspaces root is
   `$HOME`, which holds denied paths, so there the chat's folder carries the
-  rule. A root that itself contains glob syntax gets no rule either, and the
-  server logs a warning;
+  rule. A root that itself contains glob syntax cannot carry the rule, so
+  the turn is refused (see below);
 - `allow_login_shell = false`: commands run in a plain shell, since a login
   shell would trip over the denied `~/.profile` on every command.
 
@@ -236,10 +236,21 @@ for LibreOffice (see above). How long each answer holds:
   `bwrap: ...` line it prints, also behind a prefix, not by keywords):
   10 minutes, then the check runs again, so a fixed host recovers without a
   restart;
-- the check itself cannot run (timeout, no disk space, spawn failure):
-  1 minute, so turns do not each wait up to 20 seconds for it.
+- the check cannot lay out its throwaway folder in the server's home
+  (read-only or full disk): 1 minute, with its own message in the chat;
+- the check cannot run for another reason (timeout, spawn failure): 1 minute,
+  so turns do not each wait up to 20 seconds for it.
 
-Turns that arrive while a check runs share it.
+Turns that arrive while a check runs share it. The chat error holds a fixed
+reason only; the check's detail (command line, absolute paths, bubblewrap
+output) goes to the server log (`[Codex] Plan sandbox check ...`).
+
+Plan also refuses a single turn, with a reason, when its profile cannot
+protect that chat instead of running with a gap: the chat's folder (or the
+workspaces root) has glob characters in its path (`* ? [ ] { } !`), so the
+`.env` rule cannot match it literally; or the chat's folder lies in a part of
+`$HOME` that Plan keeps closed, such as `~/.local/share/proj`. Rename the
+folder, open the chat elsewhere, or use another mode.
 
 The app-server transport sends the config as JSON; exec sends it as raw
 `--config` overrides, because the SDK's own `config` flattens nested keys into

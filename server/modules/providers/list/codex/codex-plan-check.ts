@@ -22,6 +22,7 @@ import { resolveCodexLauncher } from '@/modules/providers/list/codex/codex-cli.j
 import { toCodexConfigOverrides } from '@/modules/providers/list/codex/codex-config-overrides.js';
 import type { CodexConfig } from '@/modules/providers/list/codex/codex-config-overrides.js';
 import {
+  CodexPlanRefusal,
   buildCodexPlanPermissionsConfig,
   resolveCodexPlanPaths,
 } from '@/modules/providers/list/codex/codex-plan-profile.js';
@@ -33,11 +34,17 @@ const execFileAsync = promisify(execFile);
 /**
  * What one check found: the profile is `honoured`; Codex got a rule wrong
  * (`ignored`); the sandbox could not start at all (`no-sandbox`); or the
- * check itself could not run (`unknown`: timeout, no disk space, spawn failure).
+ * check could not lay out its throwaway folder in the server's home
+ * (`no-scratch`: read-only or full disk); or it could not run for another
+ * reason (`unknown`: timeout, spawn failure).
  */
-export type PlanCheckOutcome = 'honoured' | 'ignored' | 'no-sandbox' | 'unknown';
+export type PlanCheckOutcome = 'honoured' | 'ignored' | 'no-sandbox' | 'no-scratch' | 'unknown';
 
-/** A check's result: its outcome and, when it is not `honoured`, why. */
+/**
+ * A check's result: its outcome and, when it is not `honoured`, why. `detail`
+ * is for the server log only: it can hold the command line and absolute
+ * paths, so it never reaches the chat.
+ */
 export type PlanCheckResult = { outcome: PlanCheckOutcome; detail: string };
 
 /** One probe of the check: a file that must read or be refused, or a folder that must or must not take a write. */
@@ -58,7 +65,7 @@ async function writeProbe(file: string): Promise<void> {
  * `base` must lie outside /tmp, which the profile makes writable, so "the
  * chat folder takes no write" means something. The chat folder sits in the
  * home, next to a key folder, as it does outside Docker; the workspaces root
- * lies outside the home, as it does in Docker.
+ * lies outside the home, as it does in Docker. Exported for tests.
  */
 export async function preparePlanCheckLayout(base: string): Promise<PlanCheckLayout> {
   const home = path.join(base, 'home');
@@ -111,7 +118,7 @@ export async function preparePlanCheckLayout(base: string): Promise<PlanCheckLay
   return { paths, config, expectations, cwd: chat };
 }
 
-/** A shell script that prints `PLAN_CHECK <index> yes|no` per probe and an end marker. */
+/** A shell script that prints `PLAN_CHECK <index> yes|no` per probe and an end marker. Exported for tests. */
 export function buildPlanCheckScript(expectations: PlanCheckExpectation[]): string {
   const lines = expectations.map(({ target, expect }, index) => {
     const quoted = `'${target.replace(/'/g, `'\\''`)}'`;
@@ -127,7 +134,8 @@ type ExecFile = (file: string, args: string[], options: { cwd: string; timeout: 
 
 /**
  * Runs the script in Codex's sandbox under `config`. A failed run still
- * hands back what it printed; `exec` is replaced in tests.
+ * hands back what it printed; `exec` is replaced in tests, which also call it
+ * directly.
  */
 export async function runInCodexSandbox(
   config: CodexConfig,
@@ -153,7 +161,7 @@ const BWRAP_FAILURE = /(?:^|\s)(bwrap: .+)$/m;
 /**
  * Reads the check's output. Without the end marker the check did not finish:
  * if bubblewrap reported a failure the sandbox could not start, otherwise
- * something else stopped it.
+ * something else stopped it. Exported for tests.
  */
 export function classifyPlanCheck(
   output: { stdout: string; stderr: string },
@@ -177,15 +185,26 @@ export function classifyPlanCheck(
     : { outcome: 'honoured', wrong: [], detail: '' };
 }
 
+function failedCheck(outcome: 'no-scratch' | 'unknown', error: unknown): PlanCheckResult {
+  const detail = error instanceof Error ? error.message : String(error);
+  console.warn(`[Codex] Plan sandbox check could not run (${outcome}); Plan turns are refused for now:`, detail);
+  return { outcome, detail };
+}
+
 /**
  * Runs Plan's real profile once, on a throwaway layout under `parent` (the
- * server's home by default), in Codex's sandbox.
+ * server's home by default), in Codex's sandbox. Exported for tests.
  */
 export async function runPlanProfileCheck(parent: string = os.homedir()): Promise<PlanCheckResult> {
   let base: string | null = null;
   try {
-    base = await fs.promises.mkdtemp(path.join(parent, '.cloudcli-plan-check-'));
-    const layout = await preparePlanCheckLayout(base);
+    let layout: PlanCheckLayout;
+    try {
+      base = await fs.promises.mkdtemp(path.join(parent, '.cloudcli-plan-check-'));
+      layout = await preparePlanCheckLayout(base);
+    } catch (error) {
+      return failedCheck('no-scratch', error);
+    }
     const output = await runInCodexSandbox(layout.config, buildPlanCheckScript(layout.expectations), layout.cwd);
     const { outcome, detail } = classifyPlanCheck(output, layout.expectations);
     if (outcome !== 'honoured') {
@@ -193,9 +212,7 @@ export async function runPlanProfileCheck(parent: string = os.homedir()): Promis
     }
     return { outcome, detail };
   } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    console.warn('[Codex] Plan sandbox check could not run; Plan turns are refused for now:', detail);
-    return { outcome: 'unknown', detail };
+    return failedCheck('unknown', error);
   } finally {
     if (base) {
       await fs.promises.rm(base, { recursive: true, force: true }).catch(() => {});
@@ -207,16 +224,18 @@ export async function runPlanProfileCheck(parent: string = os.homedir()): Promis
  * How long an answer is kept. "Honoured" holds until a restart. A "no" holds
  * for a while, then the check runs again, so a fixed host (seccomp profile,
  * Codex upgrade) recovers without a restart. A check that could not run is
- * retried soon, but not on every turn: it can take up to 20 seconds.
+ * retried soon, but not on every turn: it can take up to 20 seconds. Exported
+ * for tests.
  */
 export const PLAN_CHECK_ANSWER_TTL_MS: Record<PlanCheckOutcome, number> = {
   honoured: Number.POSITIVE_INFINITY,
   ignored: 10 * 60_000,
   'no-sandbox': 10 * 60_000,
+  'no-scratch': 60_000,
   unknown: 60_000,
 };
 
-/** Wraps a check run with the cache above; turns that arrive during a run share it. */
+/** Wraps a check run with the cache above; turns that arrive during a run share it. Exported for tests. */
 export function createCodexPlanProfileChecker(
   run: () => Promise<PlanCheckResult>,
   now: () => number = Date.now,
@@ -250,20 +269,30 @@ export const codexPlanSandbox = {
 const REFUSAL: Record<Exclude<PlanCheckOutcome, 'honoured'>, string> = {
   ignored: 'this Codex does not apply the Plan sandbox rules correctly. Ask an administrator.',
   'no-sandbox': "Codex's sandbox cannot start in this container. Ask an administrator to check the seccomp profile in compose.yaml.",
+  'no-scratch': "the server cannot create the Plan sandbox check's temporary folder in its home directory (read-only, full, or a path with glob characters). Ask an administrator.",
   unknown: 'the Plan sandbox check could not run. Try again in a minute.',
 };
 
 /**
  * Plan's sandbox for one turn: the permissions profile once Codex is known to
- * honour it. Otherwise the turn is refused with an error the chat shows.
+ * honour it. Otherwise the turn is refused with an error the chat shows. The
+ * error holds a fixed reason only: the check's own `detail` (command line,
+ * absolute paths, bubblewrap output) stays in the server log.
  */
 export async function resolveCodexPlanPermissions(workingDirectory: string): Promise<CodexPlanPermissions> {
-  const { outcome, detail } = await codexPlanSandbox.check();
+  const { outcome } = await codexPlanSandbox.check();
   if (outcome !== 'honoured') {
-    throw new AppError(`Plan is unavailable: ${REFUSAL[outcome]}${detail ? ` (${detail})` : ''}`, {
+    throw new AppError(`Plan is unavailable: ${REFUSAL[outcome]}`, {
       code: 'CODEX_PLAN_SANDBOX_UNAVAILABLE',
       statusCode: 503,
     });
   }
-  return { approvalPolicy: 'never', config: buildCodexPlanPermissionsConfig(resolveCodexPlanPaths(workingDirectory)) };
+  try {
+    return { approvalPolicy: 'never', config: buildCodexPlanPermissionsConfig(resolveCodexPlanPaths(workingDirectory)) };
+  } catch (error) {
+    if (error instanceof CodexPlanRefusal) {
+      throw new AppError(`Plan is unavailable: ${error.message}`, { code: 'CODEX_PLAN_FOLDER_UNSUPPORTED', statusCode: 400 });
+    }
+    throw error;
+  }
 }
