@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
-import { createRequire } from 'node:module';
 import readline from 'node:readline';
 
+import { resolveCodexLauncher } from '@/modules/providers/list/codex/codex-cli.js';
 import type { CodexAppServerConnection, CodexAppServerHandlers } from '@/shared/types.js';
 import { AppError } from '@/shared/utils.js';
 
@@ -49,25 +49,6 @@ export type CodexThreadFork = {
   threadId: string;
   path: string;
 };
-
-/**
- * Resolves the `codex` launcher shipped in node_modules.
- *
- * Deliberately not the `codex` on PATH: a machine can have a second, older
- * install, and the protocol this speaks is only guaranteed against the
- * version this package depends on.
- */
-function resolveCodexLauncher(): string {
-  const require_ = createRequire(import.meta.url);
-  try {
-    return require_.resolve('@openai/codex/bin/codex.js');
-  } catch {
-    throw new AppError('The Codex CLI package is not installed, so the Codex app-server cannot start.', {
-      code: 'CODEX_APP_SERVER_UNAVAILABLE',
-      statusCode: 501,
-    });
-  }
-}
 
 /**
  * Used by the Codex runtime (`codex-runtime.provider.ts`) to run a chat turn

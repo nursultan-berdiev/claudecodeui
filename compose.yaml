@@ -10,6 +10,9 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
+      # Docker's default seccomp profile plus user namespaces, so Codex can run
+      # commands in its bubblewrap sandbox (Plan). See docs/internal-deployment.md.
+      - seccomp=./docker/seccomp-codex-sandbox.json
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0

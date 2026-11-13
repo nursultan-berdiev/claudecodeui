@@ -23,6 +23,9 @@ import {
 } from '@/shared/index.js';
 import { notifyRunFailed, notifyRunStopped } from '@/modules/notifications/index.js';
 import { startCodexAppServerTurn } from '@/modules/providers/list/codex/codex-app-server-turn.provider.js';
+import { toCodexConfigOverrides } from '@/modules/providers/list/codex/codex-config-overrides.js';
+import { resolveCodexPlanPermissions } from '@/modules/providers/list/codex/codex-plan-check.js';
+import type { CodexPlanPermissions } from '@/modules/providers/list/codex/codex-plan-profile.js';
 import { readAgentInstructions } from '@/shared/agent-instructions.js';
 import type { AnyRecord, ProviderRuntimeContext, ProviderRuntimeWriter } from '@/shared/index.js';
 
@@ -234,17 +237,14 @@ function transformCodexEvent(event: AnyRecord): AnyRecord {
 }
 
 /**
- * Map permission mode to Codex SDK options
- * @param {string} permissionMode - 'default', 'acceptEdits', or 'bypassPermissions'
+ * Map a permission mode other than Plan to Codex SDK options. Plan's sandbox
+ * depends on a check of the running Codex and comes from
+ * resolveCodexPlanPermissions instead.
+ * @param {string} permissionMode - 'auto', 'default', 'acceptEdits', or 'bypassPermissions'
  * @returns {object} - { sandboxMode, approvalPolicy }
  */
 function mapPermissionModeToCodexOptions(permissionMode: string): Pick<ThreadOptions, 'sandboxMode' | 'approvalPolicy'> {
   switch (permissionMode) {
-    case 'plan':
-      return {
-        sandboxMode: 'read-only',
-        approvalPolicy: 'never'
-      };
     case 'auto':
       return {
         sandboxMode: 'danger-full-access',
@@ -302,7 +302,6 @@ async function queryCodex(
   const resolvedModel = await context.resolveResumeModel(sessionId, model);
 
   const workingDirectory = cwd || projectPath || process.cwd();
-  const { sandboxMode, approvalPolicy } = mapPermissionModeToCodexOptions(permissionMode);
   const catalog = await context.getProviderModels();
   const selectedModel = catalog.OPTIONS.find((option) => option.value === resolvedModel) || null;
   const allowedEfforts = selectedModel?.effort?.values?.map((value) => value.value) || [];
@@ -351,6 +350,14 @@ async function queryCodex(
   try {
     const agentInstructions = readAgentInstructions();
 
+    // Resolved inside the try: a Plan sandbox that failed its check, or a
+    // folder Plan cannot list, fails the run with an error the chat shows
+    // instead of running Plan with fewer denials.
+    const permissions: CodexPlanPermissions = permissionMode === 'plan'
+      ? await resolveCodexPlanPermissions(workingDirectory)
+      : mapPermissionModeToCodexOptions(permissionMode);
+    const { sandboxMode, approvalPolicy, config: permissionConfig } = permissions;
+
     const registerSession = (id: string | null) => {
       if (!id) {
         return;
@@ -380,7 +387,10 @@ async function queryCodex(
     // The exec transport: the SDK's own thread, as every turn ran before the
     // app-server transport existed.
     const startExecTurn = async () => {
-      const codex = new Codex(agentInstructions ? { config: { developer_instructions: agentInstructions } } : undefined);
+      const codex = new Codex({
+        ...(agentInstructions ? { config: { developer_instructions: agentInstructions } } : {}),
+        ...(permissionConfig ? { configOverrides: toCodexConfigOverrides(permissionConfig) } : {}),
+      });
       const threadOptions: ThreadOptions = {
         workingDirectory,
         skipGitRepoCheck: true,
@@ -407,8 +417,9 @@ async function queryCodex(
           workingDirectory,
           model: resolvedModel,
           effort: resolvedEffort,
-          sandboxMode: sandboxMode ?? 'workspace-write',
+          sandboxMode,
           approvalPolicy: approvalPolicy ?? 'on-request',
+          config: permissionConfig,
           developerInstructions: agentInstructions,
           input: turnInput,
           signal: abortController.signal,

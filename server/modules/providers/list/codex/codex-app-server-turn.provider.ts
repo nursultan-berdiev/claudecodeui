@@ -21,8 +21,11 @@ export type CodexAppServerTurnInput = {
   workingDirectory: string;
   model?: string;
   effort?: string;
-  sandboxMode: string;
+  /** Unset when `config` picks a named permissions profile instead (Plan). */
+  sandboxMode?: string;
   approvalPolicy: string;
+  /** Codex config overrides for the thread, such as Plan's permissions profile. */
+  config?: AnyRecord;
   developerInstructions: string | null | undefined;
   /** The prompt, or exec-style input items when the turn carries images. */
   input: string | ExecInputItem[];
@@ -187,17 +190,21 @@ export async function startCodexAppServerTurn(input: CodexAppServerTurnInput): P
     },
   });
 
+  const config = input.config || input.effort
+    ? { ...input.config, ...(input.effort ? { model_reasoning_effort: input.effort } : {}) }
+    : null;
   let threadId: string;
   try {
     const threadSettings = {
       cwd: input.workingDirectory,
       ...(input.model ? { model: input.model } : {}),
-      sandbox: input.sandboxMode,
+      // An explicit sandbox mode overrides a permissions profile in `config`.
+      ...(input.sandboxMode ? { sandbox: input.sandboxMode } : {}),
       approvalPolicy: input.approvalPolicy,
       ...(input.developerInstructions ? { developerInstructions: input.developerInstructions } : {}),
-      // Passed as config, the way exec passes it, so every effort the model
-      // catalog offers reaches the CLI unchanged.
-      ...(input.effort ? { config: { model_reasoning_effort: input.effort } } : {}),
+      // Effort is passed as config, the way exec passes it, so every effort the
+      // model catalog offers reaches the CLI unchanged.
+      ...(config ? { config } : {}),
     };
     const started = await connection.request(
       input.providerSessionId ? 'thread/resume' : 'thread/start',
